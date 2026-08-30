@@ -686,11 +686,124 @@ function createMinerBot() {
   });
 }
 
+let inGameMissionConfig = {
+  mineCoords: { x: 100, y: -58, z: 200 },
+  chestCoords: { x: 0, y: 64, z: 0 },
+  durationMode: "continuous",
+  durationMinutes: 30,
+  distanceLength: 50,
+  strategy: "strip_mine",
+  direction: "north"
+};
+
 function handleChatCommands(sender, message) {
-  const parts = message.split(" ");
+  const parts = message.trim().split(/\s+/);
   const trigger = parts[0].toLowerCase();
+  const player = bot.players[sender];
+  const playerPos = player && player.entity ? player.entity.position.floored() : null;
 
   switch (trigger) {
+    case "!menu":
+    case "!panel":
+    case "!gui":
+    case "!help":
+    case "!miner": {
+      bot.chat(`⛏️ === [ MINER BOT IN-GAME MENU ] ===`);
+      bot.chat(`📍 Mine: (${inGameMissionConfig.mineCoords.x}, ${inGameMissionConfig.mineCoords.y}, ${inGameMissionConfig.mineCoords.z}) | 📦 Chest: (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z})`);
+      bot.chat(`⚙️ Strat: ${inGameMissionConfig.strategy} (${inGameMissionConfig.direction}) | ⏳ Dur: ${inGameMissionConfig.durationMode === "timed" ? inGameMissionConfig.durationMinutes + "m" : "24/7 Continuous"}`);
+      bot.chat(`Commands: !setmine | !setchest | !strat <strip/ore/tree> | !dir <n/s/e/w> | !time <mins> | !start | !status | !stop`);
+      break;
+    }
+
+    case "!setmine": {
+      if (parts.length >= 4) {
+        inGameMissionConfig.mineCoords = {
+          x: parseInt(parts[1], 10),
+          y: parseInt(parts[2], 10),
+          z: parseInt(parts[3], 10)
+        };
+      } else if (playerPos) {
+        inGameMissionConfig.mineCoords = { x: playerPos.x, y: playerPos.y, z: playerPos.z };
+      } else {
+        bot.chat(`Cannot detect your position. Usage: !setmine <x> <y> <z>`);
+        return;
+      }
+      bot.chat(`📍 Mining site set to: (${inGameMissionConfig.mineCoords.x}, ${inGameMissionConfig.mineCoords.y}, ${inGameMissionConfig.mineCoords.z})`);
+      break;
+    }
+
+    case "!setchest": {
+      if (parts.length >= 4) {
+        inGameMissionConfig.chestCoords = {
+          x: parseInt(parts[1], 10),
+          y: parseInt(parts[2], 10),
+          z: parseInt(parts[3], 10)
+        };
+      } else if (playerPos) {
+        inGameMissionConfig.chestCoords = { x: playerPos.x, y: playerPos.y, z: playerPos.z };
+      } else {
+        bot.chat(`Cannot detect your position. Usage: !setchest <x> <y> <z>`);
+        return;
+      }
+      bot.chat(`📦 Deposit chest set to: (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z})`);
+      break;
+    }
+
+    case "!strat":
+    case "!strategy":
+    case "!mode": {
+      const mode = (parts[1] || "").toLowerCase();
+      if (mode.includes("strip") || mode === "1") {
+        inGameMissionConfig.strategy = "strip_mine";
+      } else if (mode.includes("ore") || mode.includes("diamond") || mode === "2") {
+        inGameMissionConfig.strategy = "ore_hunter";
+      } else if (mode.includes("tree") || mode.includes("chop") || mode === "3") {
+        inGameMissionConfig.strategy = "tree_chopper";
+      } else {
+        bot.chat("Usage: !strat strip | ore | tree");
+        return;
+      }
+      bot.chat(`⚙️ Mining strategy set to: ${inGameMissionConfig.strategy}`);
+      break;
+    }
+
+    case "!dir":
+    case "!direction": {
+      const d = (parts[1] || "").toLowerCase();
+      if (d === "n" || d === "north") inGameMissionConfig.direction = "north";
+      else if (d === "s" || d === "south") inGameMissionConfig.direction = "south";
+      else if (d === "e" || d === "east") inGameMissionConfig.direction = "east";
+      else if (d === "w" || d === "west") inGameMissionConfig.direction = "west";
+      else {
+        bot.chat("Usage: !dir north | south | east | west");
+        return;
+      }
+      bot.chat(`🧭 Direction set to: ${inGameMissionConfig.direction.toUpperCase()}`);
+      break;
+    }
+
+    case "!time":
+    case "!duration": {
+      const mins = parseInt(parts[1], 10);
+      if (isNaN(mins) || mins <= 0) {
+        inGameMissionConfig.durationMode = "continuous";
+        bot.chat("⏳ Duration set to: ♾️ 24/7 Continuous Infinite Mode");
+      } else {
+        inGameMissionConfig.durationMode = "timed";
+        inGameMissionConfig.durationMinutes = mins;
+        bot.chat(`⏳ Duration set to: ⏱️ ${mins} Minutes`);
+      }
+      break;
+    }
+
+    case "!start":
+    case "!launch":
+    case "!go": {
+      bot.chat(`🚀 Launching mission to (${inGameMissionConfig.mineCoords.x}, ${inGameMissionConfig.mineCoords.y}, ${inGameMissionConfig.mineCoords.z})! Chest: (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z})`);
+      miner.startAutonomousMission(inGameMissionConfig);
+      break;
+    }
+
     case "!mission": {
       // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes]
       if (parts.length < 7) {
@@ -701,49 +814,55 @@ function handleChatCommands(sender, message) {
       const chestCoords = { x: parseInt(parts[4]), y: parseInt(parts[5]), z: parseInt(parts[6]) };
       const durationMinutes = parseInt(parts[7]) || 30;
 
-      bot.chat(`Launching mining mission to (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) with chest at (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      bot.chat(`Launching mission to (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
         durationMode: parts[7] ? "timed" : "continuous",
         durationMinutes,
-        strategy: "strip_mine",
-        direction: "north"
+        strategy: inGameMissionConfig.strategy || "strip_mine",
+        direction: inGameMissionConfig.direction || "north"
       });
       break;
     }
 
     case "!stop":
+    case "!abort":
       miner.stop(`Stopped by ${sender}`);
-      bot.chat("Mission stopped.");
+      bot.chat("Mining mission stopped.");
       break;
 
     case "!deposit":
-      if (config.mining?.homeChest?.x !== undefined) {
-        bot.chat("Returning to chest to deposit and sort items...");
-        miner.depositAndSortAllItems(config.mining.homeChest);
-      } else {
-        bot.chat("No chest coordinates set in settings.json.");
-      }
+      bot.chat(`Returning to chest at (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z}) to deposit and sort items...`);
+      miner.depositAndSortAllItems(inGameMissionConfig.chestCoords);
       break;
 
-    case "!stats":
+    case "!status":
+    case "!hud":
+    case "!stats": {
       const s = miner.stats;
-      bot.chat(`Mined: 💎${s.diamonds} | 🧱${s.ancientDebris} | ⚙️${s.iron} | 🪙${s.gold} | 🪨${s.coal} | Total: ${s.totalBlocksMined} (Trips: ${s.chestTrips})`);
+      const pos = bot.entity.position.floored();
+      bot.chat(`📊 State: ${miner.state} | Pos: X=${pos.x} Y=${pos.y} Z=${pos.z}`);
+      bot.chat(`💎${s.diamonds} 🧱${s.ancientDebris} ⚙️${s.iron} 🪙${s.gold} 🪨${s.coal} | Total: ${s.totalBlocksMined} (Trips: ${s.chestTrips})`);
       break;
+    }
 
-    case "!coords":
+    case "!coords": {
       const pos = bot.entity.position.floored();
       bot.chat(`Bot Position: X=${pos.x} Y=${pos.y} Z=${pos.z}`);
       break;
+    }
 
-    case "!follow":
-      const pl = bot.players[sender];
-      if (pl && pl.entity) {
+    case "!come":
+    case "!follow": {
+      if (player && player.entity) {
         bot.chat(`Following ${sender}...`);
-        bot.pathfinder.setGoal(new GoalFollow(pl.entity, 2), true);
+        bot.pathfinder.setGoal(new GoalFollow(player.entity, 2), true);
+      } else {
+        bot.chat(`Cannot see ${sender} nearby.`);
       }
       break;
+    }
   }
 }
 
