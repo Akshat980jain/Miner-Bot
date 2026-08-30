@@ -1,0 +1,91 @@
+{
+  "name": "Minecraft Miner Bot",
+  "bot": {
+    "username": "Miner_Bot",
+    "password": "",
+    "type": "offline",
+    "authorizedUsers": []
+  },
+  "server": {
+    "ip": "akshat908-qceo.aternos.me",
+    "port": 14539,
+    "version": "1.21.4"
+  },
+  "utils": {
+    "auto-auth": {
+      "enabled": true,
+      "password": "chalol78"
+    },
+    "auto-reconnect": true,
+    "auto-reconnect-delay": 3000,
+    "max-reconnect-delay": 30000,
+    "chat-log": true
+  },
+  "mining": {
+    "defaultRadius": 32,
+    "maxOresPerRun": 64,
+    "targetOres": [
+      "diamond_ore",
+      "deepslate_diamond_ore",
+      "ancient_debris",
+      "iron_ore",
+      "deepslate_iron_ore",
+      "gold_ore",
+      "deepslate_gold_ore",
+      "coal_ore",
+      "deepslate_coal_ore",
+      "lapis_ore",
+      "deepslate_lapis_ore",
+      "redstone_ore",
+      "deepslate_redstone_ore",
+      "copper_ore",
+      "deepslate_copper_ore",
+      "nether_quartz_ore",
+      "nether_gold_ore"
+    ],
+    "stripMine": {
+      "defaultLength": 50,
+      "torchSpacing": 8,
+      "placeTorches": true,
+      "width": 1,
+      "height": 2,
+      "branchSpacing": 3
+    },
+    "homeChest": {
+      "enabled": false,
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "trashFilter": {
+      "enabled": false,
+      "items": [
+        "cobblestone",
+        "cobbled_deepslate",
+        "dirt",
+        "gravel",
+        "diorite",
+        "andesite",
+        "granite",
+        "tuff"
+      ]
+    }
+  },
+  "safety": {
+    "autoEat": {
+      "enabled": true,
+      "minFood": 14
+    },
+    "toolProtection": {
+      "enabled": true,
+      "minDurabilityPercent": 5
+    },
+    "lavaProtection": true,
+    "retreatOnLowHealth": true,
+    "minHealth": 6
+  },
+  "discord": {
+    "enabled": false,
+    "webhookUrl": ""
+  }
+}

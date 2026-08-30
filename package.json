@@ -1,0 +1,30 @@
+{
+  "name": "minecraft-miner-bot",
+  "version": "1.0.0",
+  "description": "Autonomous 24/7 Minecraft Miner Bot with multi-mode mining, safety protection, chest depositing, and web dashboard.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --check index.js && node --check miner.js && node --check safety.js"
+  },
+  "keywords": [
+    "minecraft",
+    "miner",
+    "bot",
+    "mineflayer",
+    "afk",
+    "automation"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "minecraft-data": "^3.114.0",
+    "mineflayer": "^4.38.0",
+    "mineflayer-auto-eat": "^3.3.4",
+    "mineflayer-collectblock": "^1.5.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-tool": "^1.1.0",
+    "vec3": "^0.1.10"
+  }
+}
