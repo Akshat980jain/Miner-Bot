@@ -684,23 +684,25 @@ function createMinerBot() {
     }
   });
 
-  // Listen for player right-click / swing interactions
+  // Listen for player right-click / punch interactions safely
   let lastInteractTime = {};
   bot._client.on("animation", (packet) => {
-    if (!bot || !bot.entity) return;
-    const entity = bot.entities[packet.entityId];
-    if (!entity || entity.type !== "player" || entity.username === bot.username) return;
+    try {
+      if (!bot || !bot.entity) return;
+      const entity = bot.entities[packet.entityId];
+      if (!entity || entity.type !== "player" || entity.username === bot.username) return;
 
-    const dist = bot.entity.position.distanceTo(entity.position);
-    if (dist <= 4.0) {
-      const now = Date.now();
-      const last = lastInteractTime[entity.username] || 0;
-      if (now - last > 2000) {
-        lastInteractTime[entity.username] = now;
-        bot.lookAt(entity.position.offset(0, 1.6, 0)).catch(() => {});
-        sendInteractiveMenu(entity.username);
+      const dist = bot.entity.position.distanceTo(entity.position);
+      if (dist <= 3.5) {
+        const now = Date.now();
+        const last = lastInteractTime[entity.username] || 0;
+        if (now - last > 3000) {
+          lastInteractTime[entity.username] = now;
+          bot.lookAt(entity.position.offset(0, 1.6, 0)).catch(() => {});
+          sendInteractiveMenu(entity.username);
+        }
       }
-    }
+    } catch (_) {}
   });
 
   bot.on("chat", (username, message) => {
@@ -743,79 +745,12 @@ function sendInteractiveMenu(username) {
   const dashUrl = process.env.RENDER_EXTERNAL_URL || "https://miner-bot-5340.onrender.com";
   
   if (bot && typeof bot.chat === "function") {
-    const tellrawJson = JSON.stringify([
-      { text: "\n═════════ ", color: "dark_aqua", bold: true },
-      { text: "⛏️ MINER BOT INTERACTION PANEL", color: "gold", bold: true },
-      { text: " ═════════\n", color: "dark_aqua", bold: true },
-      { text: "🌐 ", color: "yellow" },
-      {
-        text: "[👉 CLICK HERE TO OPEN INTERACTION DASHBOARD 👈]",
-        color: "aqua",
-        bold: true,
-        underlined: true,
-        clickEvent: { action: "open_url", value: dashUrl },
-        hoverEvent: { action: "show_text", value: "Click to open Mission Control Web UI" }
-      },
-      { text: "\n\n", color: "white" },
-      { text: "📍 Mine Site: ", color: "gray" },
-      {
-        text: `[(${inGameMissionConfig.mineCoords.x}, ${inGameMissionConfig.mineCoords.y}, ${inGameMissionConfig.mineCoords.z})]`,
-        color: "yellow"
-      },
-      { text: "  ", color: "white" },
-      {
-        text: "[📌 Set Mine Here]",
-        color: "green",
-        bold: true,
-        clickEvent: { action: "run_command", value: "!setmine" },
-        hoverEvent: { action: "show_text", value: "Set mine coordinates to your position" }
-      },
-      { text: "\n📦 Deposit Chest: ", color: "gray" },
-      {
-        text: `[(${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z})]`,
-        color: "yellow"
-      },
-      { text: "  ", color: "white" },
-      {
-        text: "[📌 Set Chest Here]",
-        color: "green",
-        bold: true,
-        clickEvent: { action: "run_command", value: "!setchest" },
-        hoverEvent: { action: "show_text", value: "Set deposit chest to your position" }
-      },
-      { text: "\n\n", color: "white" },
-      {
-        text: "[ 🚀 START MISSION ]",
-        color: "green",
-        bold: true,
-        clickEvent: { action: "run_command", value: "!start" },
-        hoverEvent: { action: "show_text", value: "Launch autonomous mining mission!" }
-      },
-      { text: "  ", color: "white" },
-      {
-        text: "[ 🛑 STOP ]",
-        color: "red",
-        bold: true,
-        clickEvent: { action: "run_command", value: "!stop" },
-        hoverEvent: { action: "show_text", value: "Stop active mission" }
-      },
-      { text: "  ", color: "white" },
-      {
-        text: "[ 📊 STATS ]",
-        color: "gold",
-        bold: true,
-        clickEvent: { action: "run_command", value: "!status" },
-        hoverEvent: { action: "show_text", value: "View live stats and HUD" }
-      },
-      { text: "\n═══════════════════════════════════════\n", color: "dark_aqua", bold: true }
-    ]);
-
     try {
-      bot.chat(`/tellraw ${username} ${tellrawJson}`);
-    } catch (_) {
-      bot.chat(`[MinerBot] Mission Dashboard: ${dashUrl}`);
-      bot.chat(`[MinerBot] Type !setmine, !setchest, or !start to begin!`);
-    }
+      bot.chat(`⛏️ [Miner Bot] Hey ${username}!`);
+      bot.chat(`🌐 Dashboard: ${dashUrl}`);
+      bot.chat(`📍 Mine: (${inGameMissionConfig.mineCoords.x}, ${inGameMissionConfig.mineCoords.y}, ${inGameMissionConfig.mineCoords.z}) | 📦 Chest: (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z})`);
+      bot.chat(`Commands: !setmine | !setchest | !start | !stop | !status`);
+    } catch (_) {}
   }
 }
 
