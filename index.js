@@ -658,6 +658,31 @@ function createMinerBot() {
         bot.chat(`/login ${pass}`);
       }, 1500);
     }
+
+    // Force Creative Mode Enforcer
+    if (config.server?.tryCreative !== false) {
+      setTimeout(() => {
+        bot.chat("/gamemode creative");
+        addLog("[Gamemode] Switched to Creative Mode.", "General");
+      }, 2500);
+
+      bot.on("game", () => {
+        if (bot.game && bot.game.gameMode !== "creative") {
+          bot.chat("/gamemode creative");
+        }
+      });
+
+      bot.on("respawn", () => {
+        setTimeout(() => bot.chat("/gamemode creative"), 1000);
+      });
+
+      // Keep creative active indefinitely
+      setInterval(() => {
+        if (bot && botState.connected && bot.game && bot.game.gameMode !== "creative") {
+          bot.chat("/gamemode creative");
+        }
+      }, 20000);
+    }
   });
 
   bot.on("chat", (username, message) => {

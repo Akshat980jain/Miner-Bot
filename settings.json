@@ -9,7 +9,8 @@
   "server": {
     "ip": "akshat908-qceo.aternos.me",
     "port": 14539,
-    "version": "1.21.4"
+    "version": "1.21.4",
+    "tryCreative": true
   },
   "utils": {
     "auto-auth": {
