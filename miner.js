@@ -314,7 +314,15 @@ class MinerManager {
 
     try {
       const chestVec = new Vec3(chestCoords.x, chestCoords.y, chestCoords.z);
-      await this.bot.pathfinder.goto(new GoalNear(chestVec.x, chestVec.y, chestVec.z, 2));
+      const dist = this.bot.entity ? this.bot.entity.position.distanceTo(chestVec) : 999;
+      if (dist > 3) {
+        this.bot.chat(`/tp ${this.bot.username} ${chestCoords.x} ${chestCoords.y} ${chestCoords.z}`);
+        await this.sleep(600);
+      } else {
+        try {
+          await this.bot.pathfinder.goto(new GoalNear(chestVec.x, chestVec.y, chestVec.z, 2));
+        } catch (_) {}
+      }
 
       this.state = "DEPOSITING_SORTING";
       let chestBlock = await this.ensureAndPlaceChest(chestVec);
@@ -415,15 +423,19 @@ class MinerManager {
 
     // Step 1: Navigate to Mining Site
     this.state = "TRAVELING_TO_MINE";
-    addLog(`[Navigation] Traveling to Mine Coordinates (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})...`, "Miner");
+    const mineVec = new Vec3(mineCoords.x, mineCoords.y, mineCoords.z);
+    const dist = this.bot.entity ? this.bot.entity.position.distanceTo(mineVec) : 999;
 
-    try {
-      const mineVec = new Vec3(mineCoords.x, mineCoords.y, mineCoords.z);
-      await this.bot.pathfinder.goto(new GoalNear(mineVec.x, mineVec.y, mineVec.z, 2));
-      addLog("[Navigation] Reached mining destination. Starting excavation...", "Miner");
-    } catch (navErr) {
-      addLog(`[Navigation] Starting excavation from current position.`, "Miner");
+    addLog(`[Navigation] Positioning ${this.bot.username} at Mine Coordinates (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})...`, "Miner");
+    if (dist > 3) {
+      this.bot.chat(`/tp ${this.bot.username} ${mineCoords.x} ${mineCoords.y} ${mineCoords.z}`);
+      await this.sleep(600);
+    } else {
+      try {
+        await this.bot.pathfinder.goto(new GoalNear(mineVec.x, mineVec.y, mineVec.z, 2));
+      } catch (_) {}
     }
+    addLog(`[Navigation] Reached mining destination. Starting excavation...`, "Miner");
 
     // Step 2: Main Autonomous Mining Loop
     this.state = "MINING";
