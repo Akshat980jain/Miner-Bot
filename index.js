@@ -12,6 +12,7 @@ const https = require("https");
 const { Vec3 } = require("vec3");
 
 const config = require("./settings.json");
+const { addLog, getLogs } = require("./logger");
 const SafetyManager = require("./safety");
 const MinerManager = require("./miner");
 const SwarmManager = require("./swarm");
