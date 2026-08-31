@@ -1056,7 +1056,7 @@ function handleChatCommands(sender, message) {
       }
 
       if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      swarm.registerPrimaryBot(bot, miner, safety);
 
       bot.chat(`🤖🚀 Launching Synchronized Swarm Fleet Mission across parallel lanes!`);
       swarm.startSwarmMission({
@@ -1081,7 +1081,7 @@ function handleChatCommands(sender, message) {
     case "!bots":
     case "!swarmstatus": {
       if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      swarm.registerPrimaryBot(bot, miner, safety);
       const activeBots = swarm.getSwarmStatus().filter((b) => b.connected);
       bot.chat(`🤖 Active Swarm Bots (${activeBots.length}/10): ` + activeBots.map((b) => `${b.username} [${b.state}]`).join(" | "));
       break;
@@ -1095,9 +1095,13 @@ function handleChatCommands(sender, message) {
       }
       const targetIdentifier = parts[1];
       const subCommand = parts.slice(2).join(" ");
-      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
-      swarm.executeBotCommand(targetIdentifier, sender, subCommand);
+      if (targetIdentifier.toLowerCase() === "miner_bot" || targetIdentifier === "1" || targetIdentifier.toLowerCase() === "minerbot") {
+        handleChatCommands(sender, subCommand);
+      } else {
+        if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+        swarm.registerPrimaryBot(bot, miner, safety);
+        swarm.executeBotCommand(targetIdentifier, sender, subCommand);
+      }
       break;
     }
   }

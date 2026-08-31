@@ -21,6 +21,17 @@ class SwarmManager {
     this.autoStartTriggered = false;
   }
 
+  registerPrimaryBot(bot, miner, safety) {
+    this.bots.set(1, {
+      id: 1,
+      username: "Miner_Bot",
+      bot,
+      miner,
+      safety,
+      connected: true
+    });
+  }
+
   getBotName(id) {
     if (id === 1) return "Miner_Bot";
     return `Miner_Bot_${id}`;
@@ -335,7 +346,10 @@ class SwarmManager {
    * Launches a Synchronized Swarm Mission across parallel lanes
    */
   async startSwarmMission(missionConfig) {
-    const activeEntries = Array.from(this.bots.values()).filter((e) => e.connected);
+    const activeEntries = Array.from(this.bots.values())
+      .filter((e) => e.connected && e.bot && e.miner)
+      .sort((a, b) => a.id - b.id);
+
     if (activeEntries.length === 0) {
       this.addLog("[Swarm] No connected bots available to launch swarm mission!", "Swarm");
       return;
