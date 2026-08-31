@@ -205,13 +205,13 @@ class MinerManager {
         await this.bot.dig(targetBlock);
         this.recordMinedBlock(blkName);
 
-        // Deliver actual dropped item directly into inventory
         const dropItem = this.getDroppedItemName(blkName);
         if (dropItem) {
-          this.bot.chat(`/give ${this.bot.username} ${dropItem} 1`);
+          if (!this.collectedDrops) this.collectedDrops = {};
+          this.collectedDrops[dropItem] = (this.collectedDrops[dropItem] || 0) + 1;
         }
 
-        await this.sleep(60);
+        await this.sleep(40);
         return true;
       }
     } catch (e) {
@@ -231,9 +231,16 @@ class MinerManager {
       const floorBlock = this.bot.blockAt(floorPos);
 
       if (!floorBlock || floorBlock.name === "air" || floorBlock.name.includes("air") || floorBlock.name.includes("water") || floorBlock.name.includes("lava")) {
-        addLog(`[Auto-Bridge] Gap detected at ${floorPos}. Bridging chasm with cobblestone...`, "Safety");
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} cobblestone`);
-        await this.sleep(80);
+        const stoneItem = this.bot.inventory.items().find((i) => i.name.includes("cobble") || i.name.includes("stone") || i.name.includes("dirt"));
+        if (stoneItem) {
+          try {
+            await this.bot.equip(stoneItem, "hand");
+            const refBlock = this.bot.blockAt(nextFoot.offset(0, -1, 0));
+            if (refBlock) {
+              await this.bot.placeBlock(refBlock, new Vec3(0, 1, 0));
+            }
+          } catch (_) {}
+        }
       }
     }
   }
@@ -330,6 +337,17 @@ class MinerManager {
       if (!chestBlock || !chestBlock.name.includes("chest")) {
         addLog(`[Chest Error] Could not find or deploy chest at (${chestVec.x}, ${chestVec.y}, ${chestVec.z})!`, "Inventory");
         return false;
+      }
+
+      // Batch deliver collected mined blocks directly into inventory in 1 quick batch
+      if (this.collectedDrops) {
+        for (const [itemName, count] of Object.entries(this.collectedDrops)) {
+          if (count > 0) {
+            this.bot.chat(`/give ${this.bot.username} ${itemName} ${count}`);
+            await this.sleep(150);
+          }
+        }
+        this.collectedDrops = {};
       }
 
       addLog("[Chest] Opening container and sorting all items...", "Inventory");
