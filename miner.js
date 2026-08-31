@@ -261,18 +261,19 @@ class MinerManager {
       durationMinutes = 30,
       distanceLength = 50,
       strategy = "strip_mine",
-      direction = "north"
+      direction = "north",
+      size = "3x3"
     } = missionConfig;
 
     if (durationMode === "timed") {
       this.missionEndTime = Date.now() + durationMinutes * 60 * 1000;
-      addLog(`[Mission] Launched Timed Mission (${durationMinutes} mins) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
+      addLog(`[Mission] Launched Timed Mission (${durationMinutes} mins, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else if (durationMode === "distance") {
       this.missionEndTime = 0;
-      addLog(`[Mission] Launched Distance Mission (${distanceLength} blocks) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
+      addLog(`[Mission] Launched Distance Mission (${distanceLength} blocks, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else {
       this.missionEndTime = 0;
-      addLog(`[Mission] Launched 24/7 Continuous Mission at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
+      addLog(`[Mission] Launched 24/7 Continuous Mission (${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     }
 
     // Step 1: Navigate to Mining Site
@@ -333,14 +334,34 @@ class MinerManager {
       if (strategy === "strip_mine") {
         const currentPos = this.bot.entity.position.floored();
         const nextFoot = currentPos.plus(stepVec);
-        const nextHead = nextFoot.offset(0, 1, 0);
 
-        // Break top and bottom blocks
-        const headBlk = this.bot.blockAt(nextHead);
-        if (headBlk && headBlk.name !== "air") await this.breakAndCollectBlock(headBlk);
+        // Lateral Vector perpendicular to movement direction
+        let lateralVec = new Vec3(1, 0, 0);
+        if (direction.toLowerCase() === "east" || direction.toLowerCase() === "west") {
+          lateralVec = new Vec3(0, 0, 1);
+        }
 
-        const footBlk = this.bot.blockAt(nextFoot);
-        if (footBlk && footBlk.name !== "air") await this.breakAndCollectBlock(footBlk);
+        // Determine slice bounds for 1x2, 3x3, 4x4, 5x5
+        let minX = 0, maxX = 0, minY = 0, maxY = 1;
+        if (size === "3x3") {
+          minX = -1; maxX = 1; minY = 0; maxY = 2;
+        } else if (size === "4x4") {
+          minX = -1; maxX = 2; minY = 0; maxY = 3;
+        } else if (size === "5x5") {
+          minX = -2; maxX = 2; minY = 0; maxY = 4;
+        }
+
+        // Dig out full cross-section slice
+        for (let dy = maxY; dy >= minY; dy--) {
+          for (let dx = minX; dx <= maxX; dx++) {
+            if (this.shouldStop) break;
+            const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
+            const blk = this.bot.blockAt(targetPos);
+            if (blk && blk.name !== "air" && !blk.name.includes("air")) {
+              await this.breakAndCollectBlock(blk);
+            }
+          }
+        }
 
         // Step forward
         try {

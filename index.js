@@ -865,9 +865,9 @@ function handleChatCommands(sender, message) {
     }
 
     case "!mission": {
-      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strategy] [direction]
+      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strategy] [direction] [size]
       if (parts.length < 7) {
-        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strat] [dir]");
+        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strat] [dir] [size]");
         return;
       }
       const mineCoords = { x: parseInt(parts[1], 10), y: parseInt(parts[2], 10), z: parseInt(parts[3], 10) };
@@ -875,20 +875,23 @@ function handleChatCommands(sender, message) {
       const mins = parts[7] !== undefined ? parseInt(parts[7], 10) : 0;
       const strategy = parts[8] || inGameMissionConfig.strategy || "strip_mine";
       const direction = parts[9] || inGameMissionConfig.direction || "north";
+      const size = parts[10] || inGameMissionConfig.size || "3x3";
 
       inGameMissionConfig.mineCoords = mineCoords;
       inGameMissionConfig.chestCoords = chestCoords;
       inGameMissionConfig.strategy = strategy;
       inGameMissionConfig.direction = direction;
+      inGameMissionConfig.size = size;
 
-      bot.chat(`🚀 Starting ${strategy} (${direction.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
         durationMode: mins > 0 ? "timed" : "continuous",
         durationMinutes: mins > 0 ? mins : 30,
         strategy,
-        direction
+        direction,
+        size
       });
       break;
     }
