@@ -382,12 +382,15 @@ class MinerManager {
       size = "3x3"
     } = missionConfig;
 
+    const startBlocksMined = this.stats.totalBlocksMined;
+    const targetBlocks = distanceLength || 100;
+
     if (durationMode === "timed") {
       this.missionEndTime = Date.now() + durationMinutes * 60 * 1000;
       addLog(`[Mission] Launched Timed Mission (${durationMinutes} mins, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else if (durationMode === "distance") {
       this.missionEndTime = 0;
-      addLog(`[Mission] Launched Distance Mission (${distanceLength} blocks, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
+      addLog(`[Mission] Launched Target Block Mission (${targetBlocks} blocks, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else {
       this.missionEndTime = 0;
       addLog(`[Mission] Launched 24/7 Continuous Mission (${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
@@ -419,13 +422,16 @@ class MinerManager {
     while (!this.shouldStop) {
       // Check Time Limit
       if (durationMode === "timed" && Date.now() >= this.missionEndTime) {
+        this.bot.chat(`⏳ Mission timer of ${durationMinutes} minutes completed! Returning to deposit...`);
         addLog("[Mission] Timer expired! Concluding mining mission.", "Miner");
         break;
       }
 
-      // Check Distance Limit
-      if (durationMode === "distance" && distanceCovered >= distanceLength) {
-        addLog(`[Mission] Target distance of ${distanceLength} blocks reached!`, "Miner");
+      // Check Exact Block Count Limit
+      const currentMinedCount = this.stats.totalBlocksMined - startBlocksMined;
+      if (durationMode === "distance" && currentMinedCount >= targetBlocks) {
+        this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMinedCount} blocks mined)! Returning to chest to deposit everything...`);
+        addLog(`[Mission] Target block limit of ${targetBlocks} reached (${currentMinedCount} blocks mined)!`, "Miner");
         break;
       }
 
@@ -472,12 +478,31 @@ class MinerManager {
         for (let dy = maxY; dy >= minY; dy--) {
           for (let dx = minX; dx <= maxX; dx++) {
             if (this.shouldStop) break;
+            const currentMined = this.stats.totalBlocksMined - startBlocksMined;
+            if (durationMode === "distance" && currentMined >= targetBlocks) {
+              break;
+            }
+
             const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
             const blk = this.bot.blockAt(targetPos);
             if (blk && blk.name !== "air" && !blk.name.includes("air")) {
               await this.breakAndCollectBlock(blk);
+              const updatedMined = this.stats.totalBlocksMined - startBlocksMined;
+              if (updatedMined % 25 === 0 && durationMode === "distance") {
+                this.bot.chat(`⛏️ Progress: ${updatedMined} / ${targetBlocks} blocks mined`);
+              }
             }
           }
+          const currentMined = this.stats.totalBlocksMined - startBlocksMined;
+          if (durationMode === "distance" && currentMined >= targetBlocks) {
+            break;
+          }
+        }
+
+        const currentMined = this.stats.totalBlocksMined - startBlocksMined;
+        if (durationMode === "distance" && currentMined >= targetBlocks) {
+          this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMined} blocks mined)! Returning to chest to deposit...`);
+          break;
         }
 
         // Step forward
@@ -491,14 +516,6 @@ class MinerManager {
         }
 
         distanceCovered++;
-        if (distanceCovered % 10 === 0) {
-          addLog(`[Distance Progress] Excavated ${distanceCovered} / ${distanceLength} blocks`, "Miner");
-        }
-
-        if (durationMode === "distance" && distanceCovered >= distanceLength) {
-          addLog(`[Mission] Target distance of ${distanceLength} blocks reached!`, "Miner");
-          break;
-        }
 
         // Place torch every 8 blocks
         if (distanceCovered % 8 === 0) {
