@@ -32,16 +32,16 @@ class SwarmManager {
   async startAllBots() {
     if (this.autoStartTriggered) return;
     this.autoStartTriggered = true;
-    this.addLog("[Swarm] 🌟 Sequential auto-login initiating for all 10 Miner Bots...", "Swarm");
+    this.addLog("[Swarm] 🌟 Connecting 10-bot swarm fleet sequentially with anti-spam throttle protection...", "Swarm");
 
     for (let id = 2; id <= this.maxBots; id++) {
       try {
         await this.spawnBotAndWait(id);
       } catch (err) {
-        this.addLog(`[Swarm] Bot ${id} join delayed: ${err.message}. Queued for retry.`, "Swarm");
+        this.addLog(`[Swarm] Bot ${id} join delayed: ${err.message}. Queued for auto-reconnect.`, "Swarm");
         this.enqueueReconnect(id);
       }
-      await this.sleep(4500); // 4.5s safe delay to respect server connection throttle
+      await this.sleep(5000); // 5s safe delay to completely prevent server connection throttling
     }
   }
 
@@ -70,7 +70,7 @@ class SwarmManager {
           username: username,
           version: version,
           auth: "offline",
-          checkTimeoutInterval: 0,
+          checkTimeoutInterval: 0, // Disable timeout disconnects
           hideErrors: true
         });
 
@@ -95,7 +95,7 @@ class SwarmManager {
 
         bot.once("spawn", () => {
           botEntry.connected = true;
-          this.addLog(`[Swarm] ✅ ${username} successfully joined and spawned!`, "Swarm");
+          this.addLog(`[Swarm] ✅ ${username} spawned successfully!`, "Swarm");
 
           // Initialize pathfinder movements
           try {
@@ -109,25 +109,36 @@ class SwarmManager {
 
           safety.init();
 
-          // Auto-auth (register/login for Aternos cracked auth)
+          // Auto-auth (register/login)
           const pass = "chalol78";
           setTimeout(() => {
             bot.chat(`/register ${pass} ${pass}`);
             bot.chat(`/login ${pass}`);
-          }, 1000);
+          }, 1200);
 
-          // Creative mode, tool supply & auto-teleport to player so bots gather at player's location
+          // Spaced command execution to prevent server kicking for command spam
           setTimeout(() => {
             bot.chat("/gamemode creative");
+          }, 2400);
+
+          setTimeout(() => {
             bot.chat(`/give ${username} netherite_pickaxe 1`);
+          }, 3200);
+
+          setTimeout(() => {
             bot.chat(`/give ${username} torch 64`);
+          }, 3800);
+
+          setTimeout(() => {
             bot.chat(`/give ${username} chest 64`);
             bot.chat(`/give ${username} cobblestone 64`);
-            // Teleport to player location so all bots are visible right beside Akshat_Jain!
-            bot.chat(`/tp ${username} Akshat_Jain`);
-          }, 2200);
+          }, 4400);
 
-          // Anti-AFK heartbeat
+          setTimeout(() => {
+            bot.chat(`/tp ${username} Akshat_Jain`);
+          }, 5200);
+
+          // Anti-AFK heartbeat (swing arm every 25s so server never kicks for AFK)
           if (this.heartbeatTimers.has(id)) clearInterval(this.heartbeatTimers.get(id));
           const hb = setInterval(() => {
             if (bot && botEntry.connected) {
@@ -156,7 +167,7 @@ class SwarmManager {
         });
 
         bot.on("end", () => {
-          this.addLog(`[Swarm] ${username} connection ended.`, "Swarm");
+          this.addLog(`[Swarm] ${username} disconnected.`, "Swarm");
           botEntry.connected = false;
           this.cleanUpBot(id);
           this.enqueueReconnect(id);
@@ -174,7 +185,7 @@ class SwarmManager {
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            reject(new Error("Connection handshake timeout"));
+            reject(new Error("Connection timeout"));
           }
         }, 15000);
 
@@ -221,11 +232,11 @@ class SwarmManager {
 
     while (this.reconnectQueue.length > 0) {
       const nextId = this.reconnectQueue.shift();
-      await this.sleep(4000); // 4s cooldown between reconnect attempts
+      await this.sleep(5000); // 5s cooldown between reconnect attempts to avoid throttling
       try {
         await this.spawnBotAndWait(nextId);
       } catch (err) {
-        this.addLog(`[Swarm] Reconnect for Bot ${nextId} failed (${err.message}). Re-queuing...`, "Swarm");
+        this.addLog(`[Swarm] Reconnect for Bot ${nextId} delayed. Will retry in queue...`, "Swarm");
         this.reconnectQueue.push(nextId);
       }
     }
@@ -253,7 +264,7 @@ class SwarmManager {
 
     if (!targetEntry || !targetEntry.connected) {
       if (this.bots.has(1) && this.bots.get(1).bot) {
-        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is currently reconnecting...`);
+        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is reconnecting...`);
       }
       return false;
     }
@@ -286,7 +297,7 @@ class SwarmManager {
         durationMinutes = parseInt(durParam.replace("time:", ""), 10) || 30;
       }
 
-      bot.chat(`🚀 [${targetEntry.username}] Starting individual ${size} ${strategy} mission at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
+      bot.chat(`🚀 [${targetEntry.username}] Starting ${size} mission at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
@@ -299,14 +310,13 @@ class SwarmManager {
       });
       return true;
     } else if (trigger === "!stop" || trigger === "!abort") {
-      miner.stop(`Stopped individually by ${sender}`);
-      bot.chat(`🛑 [${targetEntry.username}] Mission stopped.`);
+      miner.stop(`Stopped by ${sender}`);
+      bot.chat(`🛑 [${targetEntry.username}] Stopped.`);
       if (miner.currentMission && miner.currentMission.chestCoords) {
         miner.depositAndSortAllItems(miner.currentMission.chestCoords);
       }
       return true;
     } else if (trigger === "!deposit") {
-      bot.chat(`📦 [${targetEntry.username}] Depositing all items to chest...`);
       if (miner.currentMission && miner.currentMission.chestCoords) {
         miner.depositAndSortAllItems(miner.currentMission.chestCoords);
       }
@@ -314,7 +324,7 @@ class SwarmManager {
     } else if (trigger === "!status" || trigger === "!stats") {
       const s = miner.stats;
       const pos = bot.entity ? bot.entity.position.floored() : { x: 0, y: 0, z: 0 };
-      bot.chat(`📊 [${targetEntry.username}] State: ${miner.state} | Pos: (${pos.x}, ${pos.y}, ${pos.z}) | Blocks: ${s.totalBlocksMined} (Trips: ${s.chestTrips})`);
+      bot.chat(`📊 [${targetEntry.username}] State: ${miner.state} | Pos: (${pos.x}, ${pos.y}, ${pos.z}) | Mined: ${s.totalBlocksMined}`);
       return true;
     }
 
@@ -391,13 +401,22 @@ class SwarmManager {
     this.bots.forEach((entry) => {
       if (entry.connected && entry.miner) {
         entry.miner.stop(reason);
-        entry.bot.chat("🛑 Swarm mission stopped. Returning to chest to deposit...");
         if (entry.miner.currentMission && entry.miner.currentMission.chestCoords) {
           entry.miner.depositAndSortAllItems(entry.miner.currentMission.chestCoords);
         }
       }
     });
     this.addLog(`[Swarm] All bots stopped: ${reason}`, "Swarm");
+  }
+
+  handleBotChat(botId, sender, message) {
+    if (!message.startsWith("!")) return;
+    const parts = message.trim().split(" ");
+    const trigger = parts[0].toLowerCase();
+
+    if (trigger === "!swarmstop") {
+      this.stopSwarm(`Stopped by ${sender}`);
+    }
   }
 
   getSwarmStatus() {

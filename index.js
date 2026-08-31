@@ -691,14 +691,16 @@ function createMinerBot() {
       }, 1500);
     }
 
-    // Force Creative Mode Enforcer & Auto Tool Supply
+    // Force Creative Mode Enforcer & Auto Tool Supply & Silence Command Feedback
     if (config.server?.tryCreative !== false) {
       setTimeout(() => {
+        bot.chat("/gamerule sendCommandFeedback false");
+        bot.chat("/gamerule logAdminCommands false");
         bot.chat("/gamemode creative");
         bot.chat("/give Miner_Bot netherite_pickaxe 1");
         bot.chat("/give Miner_Bot torch 64");
         bot.chat("/give Miner_Bot chest 64");
-        addLog("[Gamemode] Switched to Creative Mode & equipped tools & chests.", "General");
+        addLog("[Gamemode] Switched to Creative Mode & silenced admin command feedback.", "General");
       }, 2500);
 
       bot.on("game", () => {
