@@ -1070,6 +1070,20 @@ function handleChatCommands(sender, message) {
       bot.chat(`🤖 Active Swarm Bots (${activeBots.length}/10): ` + activeBots.map((b) => `${b.username} [${b.state}]`).join(" | "));
       break;
     }
+
+    case "!bot": {
+      // Syntax: !bot <botName/id> <subcommand...>
+      if (parts.length < 3) {
+        bot.chat("Usage: !bot <name/id> <!mission / !stop / !deposit / !status>");
+        return;
+      }
+      const targetIdentifier = parts[1];
+      const subCommand = parts.slice(2).join(" ");
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      swarm.executeBotCommand(targetIdentifier, sender, subCommand);
+      break;
+    }
   }
 }
 

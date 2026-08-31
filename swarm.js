@@ -241,6 +241,94 @@ class SwarmManager {
   }
 
   /**
+   * Execute an individual command on a specific bot by ID (1..10) or Name (Miner_Bot_2)
+   */
+  executeBotCommand(targetIdentifier, sender, commandLine) {
+    let targetEntry = null;
+    const numId = parseInt(targetIdentifier, 10);
+    if (!isNaN(numId) && this.bots.has(numId)) {
+      targetEntry = this.bots.get(numId);
+    } else {
+      const lower = targetIdentifier.toLowerCase();
+      for (const entry of this.bots.values()) {
+        if (entry.username.toLowerCase() === lower || entry.username.toLowerCase().replace(/_/g, "") === lower.replace(/_/g, "")) {
+          targetEntry = entry;
+          break;
+        }
+      }
+    }
+
+    if (!targetEntry || !targetEntry.connected) {
+      if (this.bots.has(1) && this.bots.get(1).bot) {
+        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is not currently connected.`);
+      }
+      return false;
+    }
+
+    const { bot, miner } = targetEntry;
+    const parts = commandLine.trim().split(/\s+/);
+    const trigger = parts[0].toLowerCase();
+
+    if (trigger === "!mission") {
+      if (parts.length < 7) {
+        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [dur] [strat] [dir] [size]");
+        return true;
+      }
+      const mineCoords = { x: parseInt(parts[1], 10), y: parseInt(parts[2], 10), z: parseInt(parts[3], 10) };
+      const chestCoords = { x: parseInt(parts[4], 10), y: parseInt(parts[5], 10), z: parseInt(parts[6], 10) };
+      const durParam = (parts[7] || "0").toLowerCase();
+      const strategy = parts[8] || "strip_mine";
+      const direction = parts[9] || "north";
+      const size = parts[10] || "3x3";
+
+      let durationMode = "continuous";
+      let durationMinutes = 30;
+      let distanceLength = 100;
+
+      if (durParam.startsWith("dist:")) {
+        durationMode = "distance";
+        distanceLength = parseInt(durParam.replace("dist:", ""), 10) || 100;
+      } else if (durParam.startsWith("time:")) {
+        durationMode = "timed";
+        durationMinutes = parseInt(durParam.replace("time:", ""), 10) || 30;
+      }
+
+      bot.chat(`🚀 [${targetEntry.username}] Starting individual ${size} ${strategy} mission at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
+      miner.startAutonomousMission({
+        mineCoords,
+        chestCoords,
+        durationMode,
+        durationMinutes,
+        distanceLength,
+        strategy,
+        direction,
+        size
+      });
+      return true;
+    } else if (trigger === "!stop" || trigger === "!abort") {
+      miner.stop(`Stopped individually by ${sender}`);
+      bot.chat(`🛑 [${targetEntry.username}] Mission stopped.`);
+      if (miner.currentMission && miner.currentMission.chestCoords) {
+        miner.depositAndSortAllItems(miner.currentMission.chestCoords);
+      }
+      return true;
+    } else if (trigger === "!deposit") {
+      bot.chat(`📦 [${targetEntry.username}] Depositing all items to chest...`);
+      if (miner.currentMission && miner.currentMission.chestCoords) {
+        miner.depositAndSortAllItems(miner.currentMission.chestCoords);
+      }
+      return true;
+    } else if (trigger === "!status" || trigger === "!stats") {
+      const s = miner.stats;
+      const pos = bot.entity ? bot.entity.position.floored() : { x: 0, y: 0, z: 0 };
+      bot.chat(`📊 [${targetEntry.username}] State: ${miner.state} | Pos: (${pos.x}, ${pos.y}, ${pos.z}) | Blocks: ${s.totalBlocksMined} (Trips: ${s.chestTrips})`);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Stop all swarm bots
    */
   stopSwarm(reason = "User requested swarm stop") {
