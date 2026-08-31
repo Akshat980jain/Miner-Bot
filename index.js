@@ -659,11 +659,13 @@ function createMinerBot() {
       }, 1500);
     }
 
-    // Force Creative Mode Enforcer
+    // Force Creative Mode Enforcer & Auto Tool Supply
     if (config.server?.tryCreative !== false) {
       setTimeout(() => {
         bot.chat("/gamemode creative");
-        addLog("[Gamemode] Switched to Creative Mode.", "General");
+        bot.chat("/give Miner_Bot netherite_pickaxe 1");
+        bot.chat("/give Miner_Bot torch 64");
+        addLog("[Gamemode] Switched to Creative Mode & equipped tools.", "General");
       }, 2500);
 
       bot.on("game", () => {

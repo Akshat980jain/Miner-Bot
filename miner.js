@@ -151,8 +151,11 @@ class MinerManager {
   /**
    * Universal Block Breaker & Drop Collector
    */
+  /**
+   * Universal Block Breaker & Drop Collector
+   */
   async breakAndCollectBlock(targetBlock) {
-    if (!targetBlock || targetBlock.name === "air" || targetBlock.name.includes("water") || targetBlock.name.includes("lava")) {
+    if (!targetBlock || targetBlock.name === "air" || targetBlock.name.includes("air") || targetBlock.name.includes("water") || targetBlock.name.includes("lava") || targetBlock.name === "bedrock") {
       return false;
     }
 
@@ -163,17 +166,19 @@ class MinerManager {
 
     try {
       await this.safety.equipBestTool(targetBlock);
-      if (this.bot.collectBlock && typeof this.bot.collectBlock.collect === "function") {
-        await this.bot.collectBlock.collect(targetBlock);
-      } else {
+      await this.bot.lookAt(targetBlock.position.offset(0.5, 0.5, 0.5));
+
+      if (this.bot.canDigBlock(targetBlock)) {
         await this.bot.dig(targetBlock);
-        await this.sleep(150);
+        this.recordMinedBlock(targetBlock.name);
+        await this.sleep(80);
+        return true;
       }
-      this.recordMinedBlock(targetBlock.name);
-      return true;
     } catch (e) {
+      addLog(`[Digging Note] ${e.message}`, "Miner");
       return false;
     }
+    return false;
   }
 
   /**
@@ -217,7 +222,6 @@ class MinerManager {
           depositedCount += item.count;
           await this.sleep(80);
         } catch (depositErr) {
-          // Chest might be full
           if (depositErr.message && depositErr.message.includes("full")) {
             addLog("[Chest Warning] Chest is completely full!", "Inventory");
             break;
@@ -237,11 +241,6 @@ class MinerManager {
 
   /**
    * AUTONOMOUS MISSION CONTROLLER
-   * Handles:
-   *  1. Travel to Mine Coordinates
-   *  2. Continuous / Timed / Distance Mining (Universal - Collects ALL items)
-   *  3. Auto-trip to Chest when inventory full, then resumes mining
-   *  4. Final return & chest sorting upon completion
    */
   async startAutonomousMission(missionConfig) {
     if (this.state !== "IDLE" && !this.shouldStop) {
@@ -258,10 +257,10 @@ class MinerManager {
     const {
       mineCoords,
       chestCoords,
-      durationMode = "continuous", // "continuous", "timed", "distance"
+      durationMode = "continuous",
       durationMinutes = 30,
       distanceLength = 50,
-      strategy = "strip_mine", // "strip_mine", "quarry", "ore_hunter", "tree_chopper"
+      strategy = "strip_mine",
       direction = "north"
     } = missionConfig;
 
@@ -269,6 +268,7 @@ class MinerManager {
       this.missionEndTime = Date.now() + durationMinutes * 60 * 1000;
       addLog(`[Mission] Launched Timed Mission (${durationMinutes} mins) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else if (durationMode === "distance") {
+      this.missionEndTime = 0;
       addLog(`[Mission] Launched Distance Mission (${distanceLength} blocks) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
     } else {
       this.missionEndTime = 0;
@@ -284,7 +284,7 @@ class MinerManager {
       await this.bot.pathfinder.goto(new GoalNear(mineVec.x, mineVec.y, mineVec.z, 2));
       addLog("[Navigation] Reached mining destination. Starting excavation...", "Miner");
     } catch (navErr) {
-      addLog(`[Navigation Hitch] Path to mine site: ${navErr.message}. Commencing from nearest point.`, "Miner");
+      addLog(`[Navigation] Starting excavation from current position.`, "Miner");
     }
 
     // Step 2: Main Autonomous Mining Loop
@@ -324,7 +324,7 @@ class MinerManager {
         this.state = "TRAVELING_TO_MINE";
         addLog(`[Navigation] Returning to mining front at ${this.resumeMiningPos}...`, "Miner");
         try {
-          await this.bot.pathfinder.goto(new GoalBlock(this.resumeMiningPos.x, this.resumeMiningPos.y, this.resumeMiningPos.z));
+          await this.bot.pathfinder.goto(new GoalNear(this.resumeMiningPos.x, this.resumeMiningPos.y, this.resumeMiningPos.z, 1));
         } catch (_) {}
         this.state = "MINING";
       }
@@ -335,31 +335,32 @@ class MinerManager {
         const nextFoot = currentPos.plus(stepVec);
         const nextHead = nextFoot.offset(0, 1, 0);
 
-        // Break top and bottom blocks (Collects ALL items)
+        // Break top and bottom blocks
         const headBlk = this.bot.blockAt(nextHead);
-        if (headBlk) await this.breakAndCollectBlock(headBlk);
+        if (headBlk && headBlk.name !== "air") await this.breakAndCollectBlock(headBlk);
 
         const footBlk = this.bot.blockAt(nextFoot);
-        if (footBlk) await this.breakAndCollectBlock(footBlk);
+        if (footBlk && footBlk.name !== "air") await this.breakAndCollectBlock(footBlk);
 
-        // Move forward
+        // Step forward
         try {
-          await this.bot.pathfinder.goto(new GoalBlock(nextFoot.x, nextFoot.y, nextFoot.z));
-        } catch (_) {}
+          await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
+          await this.bot.pathfinder.goto(new GoalNear(nextFoot.x, nextFoot.y, nextFoot.z, 0));
+        } catch (_) {
+          this.bot.setControlState("forward", true);
+          await this.sleep(300);
+          this.bot.setControlState("forward", false);
+        }
 
         distanceCovered++;
 
-        // Harvest exposed side/ceiling/floor ores & blocks
-        await this.harvestSurroundingBlocks(nextFoot);
-
         // Place torch every 8 blocks
         if (distanceCovered % 8 === 0) {
-          await this.placeTorch(nextFoot);
+          await this.placeTorch(this.bot.entity.position.floored());
         }
       } else if (strategy === "ore_hunter") {
-        // Find any nearby valuable or requested block
         const targetBlocks = this.bot.findBlocks({
-          matching: (b) => b && b.name.includes("ore") || b.name.includes("debris") || b.name.includes("raw_"),
+          matching: (b) => b && (b.name.includes("ore") || b.name.includes("debris") || b.name.includes("raw_")),
           maxDistance: 32,
           count: 5
         });
@@ -368,18 +369,17 @@ class MinerManager {
           const target = this.bot.blockAt(targetBlocks[0]);
           if (target) await this.breakAndCollectBlock(target);
         } else {
-          // No ores in view: tunnel forward to discover more
           const currentPos = this.bot.entity.position.floored();
           const nextPos = currentPos.plus(stepVec);
           await this.breakAndCollectBlock(this.bot.blockAt(nextPos.offset(0, 1, 0)));
           await this.breakAndCollectBlock(this.bot.blockAt(nextPos));
           try {
-            await this.bot.pathfinder.goto(new GoalBlock(nextPos.x, nextPos.y, nextPos.z));
+            await this.bot.pathfinder.goto(new GoalNear(nextPos.x, nextPos.y, nextPos.z, 0));
           } catch (_) {}
         }
       } else if (strategy === "tree_chopper") {
         const logs = this.bot.findBlocks({
-          matching: (b) => b && b.name.includes("_log") || b.name.includes("_wood"),
+          matching: (b) => b && (b.name.includes("_log") || b.name.includes("_wood")),
           maxDistance: 24,
           count: 5
         });
@@ -393,7 +393,7 @@ class MinerManager {
         }
       }
 
-      await this.sleep(200);
+      await this.sleep(150);
     }
 
     // Step 3: Final Return & Deposit All Mined Items
