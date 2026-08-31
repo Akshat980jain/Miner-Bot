@@ -66,20 +66,29 @@ class SwarmManager {
         this.addLog(`[Swarm] ✅ ${username} spawned successfully in world!`, "Swarm");
 
         // Initialize pathfinder
-        const mcData = require("minecraft-data")(bot.version);
-        const defaultMove = new Movements(bot, mcData);
-        defaultMove.allowFreeMotion = true;
-        defaultMove.canDig = true;
-        defaultMove.allow1by1towers = false;
-        bot.pathfinder.setMovements(defaultMove);
+        try {
+          const mcData = require("minecraft-data")(bot.version);
+          const defaultMove = new Movements(bot, mcData);
+          defaultMove.allowFreeMotion = true;
+          defaultMove.canDig = true;
+          defaultMove.allow1by1towers = false;
+          bot.pathfinder.setMovements(defaultMove);
+        } catch (_) {}
 
-        // Creative mode & tool supply
+        // Auto-auth (register/login for Aternos servers), Creative mode & tool supply
+        const pass = "chalol78";
+        setTimeout(() => {
+          bot.chat(`/register ${pass} ${pass}`);
+          bot.chat(`/login ${pass}`);
+        }, 1200);
+
         setTimeout(() => {
           bot.chat("/gamemode creative");
           bot.chat(`/give ${username} netherite_pickaxe 1`);
           bot.chat(`/give ${username} torch 64`);
           bot.chat(`/give ${username} chest 64`);
-        }, 2000);
+          bot.chat(`/give ${username} cobblestone 64`);
+        }, 2200);
 
         this.broadcastState();
       });
@@ -116,11 +125,12 @@ class SwarmManager {
    */
   async spawnSwarm(count = 3) {
     const targetCount = Math.min(Math.max(count, 1), this.maxBots);
-    this.addLog(`[Swarm] Launching Swarm Fleet of ${targetCount} Bots...`, "Swarm");
+    this.addLog(`[Swarm] Spawning Swarm Fleet of ${targetCount} Bots...`, "Swarm");
 
-    for (let id = 1; id <= targetCount; id++) {
+    // Bot 1 is the primary bot; spawn bots 2 through targetCount
+    for (let id = 2; id <= targetCount; id++) {
       await this.spawnBot(id);
-      await this.sleep(1500); // 1.5s delay between joins
+      await this.sleep(1200); // 1.2s delay between joins for stability
     }
   }
 
@@ -141,7 +151,7 @@ class SwarmManager {
   }
 
   /**
-   * Disconnects all swarm bots except Bot 1 (or all)
+   * Disconnects all swarm bots except Bot 1
    */
   despawnSwarm(keepPrimary = true) {
     for (const [id, entry] of this.bots.entries()) {
@@ -172,7 +182,7 @@ class SwarmManager {
     } = missionConfig;
 
     // Calculate spacing width per lane based on tunnel size
-    let laneSpacing = 4; // 3x3 tunnel + 1 wall
+    let laneSpacing = 4; // 3x3 tunnel + 1 dividing wall
     if (size === "1x2") laneSpacing = 3;
     else if (size === "4x4") laneSpacing = 5;
     else if (size === "5x5") laneSpacing = 6;
