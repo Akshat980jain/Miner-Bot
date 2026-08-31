@@ -65,7 +65,7 @@ class MinerManager {
     if (!item) return 99;
     const name = item.name.toLowerCase();
 
-    // Tools & Food: Keep on bot
+    // Tools & Food & Chests: Keep on bot
     if (
       name.includes("pickaxe") ||
       name.includes("axe") ||
@@ -76,9 +76,10 @@ class MinerManager {
       name.includes("cooked_") ||
       name.includes("steak") ||
       name.includes("porkchop") ||
-      name.includes("golden_apple")
+      name.includes("golden_apple") ||
+      name.includes("chest")
     ) {
-      return 0; // Essential gear
+      return 0; // Essential gear (Keep on bot)
     }
 
     // Tier 1: Precious & Ores
@@ -122,6 +123,40 @@ class MinerManager {
   }
 
   /**
+   * Resolves block to realistic survival drop item
+   */
+  getDroppedItemName(blockName) {
+    if (!blockName) return "cobblestone";
+    const name = blockName.toLowerCase();
+
+    // Ores -> Drops
+    if (name.includes("diamond_ore")) return "diamond";
+    if (name.includes("ancient_debris")) return "ancient_debris";
+    if (name.includes("netherite")) return "netherite_scrap";
+    if (name.includes("emerald_ore")) return "emerald";
+    if (name.includes("iron_ore")) return "raw_iron";
+    if (name.includes("gold_ore")) return "raw_gold";
+    if (name.includes("copper_ore")) return "raw_copper";
+    if (name.includes("coal_ore")) return "coal";
+    if (name.includes("lapis_ore")) return "lapis_lazuli";
+    if (name.includes("redstone_ore")) return "redstone";
+    if (name.includes("quartz_ore")) return "quartz";
+
+    // Stone & Substrates
+    if (name === "stone") return "cobblestone";
+    if (name === "deepslate") return "cobbled_deepslate";
+    if (name === "grass_block" || name === "dirt_path" || name === "farmland") return "dirt";
+    if (name === "gravel") return "gravel";
+    if (name === "sand") return "sand";
+    if (name === "tuff") return "tuff";
+    if (name === "granite") return "granite";
+    if (name === "diorite") return "diorite";
+    if (name === "andesite") return "andesite";
+
+    return name;
+  }
+
+  /**
    * Records stats for all mined blocks
    */
   recordMinedBlock(blockName) {
@@ -151,9 +186,6 @@ class MinerManager {
   /**
    * Universal Block Breaker & Drop Collector
    */
-  /**
-   * Universal Block Breaker & Drop Collector
-   */
   async breakAndCollectBlock(targetBlock) {
     if (!targetBlock || targetBlock.name === "air" || targetBlock.name.includes("air") || targetBlock.name.includes("water") || targetBlock.name.includes("lava") || targetBlock.name === "bedrock") {
       return false;
@@ -169,9 +201,17 @@ class MinerManager {
       await this.bot.lookAt(targetBlock.position.offset(0.5, 0.5, 0.5));
 
       if (this.bot.canDigBlock(targetBlock)) {
+        const blkName = targetBlock.name;
         await this.bot.dig(targetBlock);
-        this.recordMinedBlock(targetBlock.name);
-        await this.sleep(80);
+        this.recordMinedBlock(blkName);
+
+        // Deliver actual dropped item directly into inventory
+        const dropItem = this.getDroppedItemName(blkName);
+        if (dropItem) {
+          this.bot.chat(`/give Miner_Bot ${dropItem} 1`);
+        }
+
+        await this.sleep(60);
         return true;
       }
     } catch (e) {
@@ -451,6 +491,14 @@ class MinerManager {
         }
 
         distanceCovered++;
+        if (distanceCovered % 10 === 0) {
+          addLog(`[Distance Progress] Excavated ${distanceCovered} / ${distanceLength} blocks`, "Miner");
+        }
+
+        if (durationMode === "distance" && distanceCovered >= distanceLength) {
+          addLog(`[Mission] Target distance of ${distanceLength} blocks reached!`, "Miner");
+          break;
+        }
 
         // Place torch every 8 blocks
         if (distanceCovered % 8 === 0) {

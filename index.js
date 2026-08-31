@@ -866,30 +866,52 @@ function handleChatCommands(sender, message) {
     }
 
     case "!mission": {
-      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strategy] [direction] [size]
+      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [duration] [strategy] [direction] [size]
       if (parts.length < 7) {
-        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strat] [dir] [size]");
+        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [dur] [strat] [dir] [size]");
         return;
       }
       const mineCoords = { x: parseInt(parts[1], 10), y: parseInt(parts[2], 10), z: parseInt(parts[3], 10) };
       const chestCoords = { x: parseInt(parts[4], 10), y: parseInt(parts[5], 10), z: parseInt(parts[6], 10) };
-      const mins = parts[7] !== undefined ? parseInt(parts[7], 10) : 0;
+      const durParam = (parts[7] || "0").toLowerCase();
       const strategy = parts[8] || inGameMissionConfig.strategy || "strip_mine";
       const direction = parts[9] || inGameMissionConfig.direction || "north";
       const size = parts[10] || inGameMissionConfig.size || "3x3";
+
+      let durationMode = "continuous";
+      let durationMinutes = 30;
+      let distanceLength = 100;
+
+      if (durParam.startsWith("dist:")) {
+        durationMode = "distance";
+        distanceLength = parseInt(durParam.replace("dist:", ""), 10) || 100;
+      } else if (durParam.startsWith("time:")) {
+        durationMode = "timed";
+        durationMinutes = parseInt(durParam.replace("time:", ""), 10) || 30;
+      } else {
+        const parsed = parseInt(durParam, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          durationMode = "timed";
+          durationMinutes = parsed;
+        }
+      }
 
       inGameMissionConfig.mineCoords = mineCoords;
       inGameMissionConfig.chestCoords = chestCoords;
       inGameMissionConfig.strategy = strategy;
       inGameMissionConfig.direction = direction;
       inGameMissionConfig.size = size;
+      inGameMissionConfig.durationMode = durationMode;
+      inGameMissionConfig.durationMinutes = durationMinutes;
 
-      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      const durLabel = durationMode === "distance" ? `${distanceLength} Blocks` : (durationMode === "timed" ? `${durationMinutes} Mins` : "24/7 Infinite");
+      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}, ${durLabel}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
-        durationMode: mins > 0 ? "timed" : "continuous",
-        durationMinutes: mins > 0 ? mins : 30,
+        durationMode,
+        durationMinutes,
+        distanceLength,
         strategy,
         direction,
         size
