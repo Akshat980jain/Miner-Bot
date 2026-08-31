@@ -278,7 +278,7 @@ class MinerManager {
 
       let depositedCount = 0;
       for (const item of itemsToDeposit) {
-        if (this.shouldStop) break;
+        if (!this.bot || !this.bot.entity) break;
         try {
           await container.deposit(item.type, null, item.count);
           depositedCount += item.count;

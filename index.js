@@ -898,10 +898,17 @@ function handleChatCommands(sender, message) {
     }
 
     case "!stop":
-    case "!abort":
+    case "!abort": {
       miner.stop(`Stopped by ${sender}`);
-      bot.chat("Mining mission stopped.");
+      const hasLoot = bot.inventory.items().some((item) => miner.getItemSortTier(item) > 0);
+      if (hasLoot && inGameMissionConfig.chestCoords && inGameMissionConfig.chestCoords.x !== undefined) {
+        bot.chat("🛑 Mining stopped. Returning to chest to safely deposit all collected loot...");
+        miner.depositAndSortAllItems(inGameMissionConfig.chestCoords);
+      } else {
+        bot.chat("🛑 Mining mission stopped.");
+      }
       break;
+    }
 
     case "!deposit":
       bot.chat(`Returning to chest at (${inGameMissionConfig.chestCoords.x}, ${inGameMissionConfig.chestCoords.y}, ${inGameMissionConfig.chestCoords.z}) to deposit and sort items...`);
