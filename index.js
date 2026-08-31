@@ -12,9 +12,9 @@ const https = require("https");
 const { Vec3 } = require("vec3");
 
 const config = require("./settings.json");
-const { addLog, getLogs } = require("./logger");
 const SafetyManager = require("./safety");
 const MinerManager = require("./miner");
+const SwarmManager = require("./swarm");
 
 // ============================================================
 // STATE TRACKING
@@ -22,6 +22,7 @@ const MinerManager = require("./miner");
 let bot = null;
 let safety = null;
 let miner = null;
+let swarm = null;
 let isReconnecting = false;
 let reconnectTimeoutId = null;
 
@@ -110,6 +111,30 @@ app.post("/api/mission/stop", (req, res) => {
   if (!miner) return res.json({ success: false });
   miner.stop("Stop requested from Interaction Dashboard");
   res.json({ success: true, message: "Mission stopped." });
+});
+
+// ============================================================
+// SWARM API ENDPOINTS
+// ============================================================
+app.get("/api/swarm/status", (req, res) => {
+  if (swarm) return res.json(swarm.getSwarmStatus());
+  res.json([]);
+});
+
+app.post("/api/swarm/spawn", async (req, res) => {
+  const count = parseInt(req.body.count, 10) || 3;
+  if (swarm) await swarm.spawnSwarm(count);
+  res.json({ success: true, message: `Spawning ${count} bots...` });
+});
+
+app.post("/api/swarm/mission", async (req, res) => {
+  if (swarm) await swarm.startSwarmMission(req.body);
+  res.json({ success: true, message: `Swarm mission dispatched!` });
+});
+
+app.post("/api/swarm/stop", (req, res) => {
+  if (swarm) swarm.stopSwarm("Stopped via web dashboard");
+  res.json({ success: true, message: `Swarm stopped!` });
 });
 
 app.get("/", (req, res) => {
@@ -961,6 +986,86 @@ function handleChatCommands(sender, message) {
       } else {
         bot.chat(`Cannot see ${sender} nearby.`);
       }
+      break;
+    }
+
+    case "!spawn": {
+      const count = parseInt(parts[1], 10) || 3;
+      bot.chat(`🤖 Spawning Swarm Fleet of ${count} Miner Bots...`);
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      swarm.spawnSwarm(count);
+      break;
+    }
+
+    case "!despawn": {
+      const id = parseInt(parts[1], 10);
+      if (swarm) {
+        if (!isNaN(id)) {
+          bot.chat(`🤖 Despawning Bot ${id}...`);
+          swarm.despawnBot(id);
+        } else {
+          bot.chat(`🤖 Despawning all extra swarm bots...`);
+          swarm.despawnSwarm(true);
+        }
+      }
+      break;
+    }
+
+    case "!swarm": {
+      // Syntax: !swarm <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [duration] [strategy] [direction] [size]
+      if (parts.length < 7) {
+        bot.chat("Usage: !swarm <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [dur] [strat] [dir] [size]");
+        return;
+      }
+      const mineCoords = { x: parseInt(parts[1], 10), y: parseInt(parts[2], 10), z: parseInt(parts[3], 10) };
+      const chestCoords = { x: parseInt(parts[4], 10), y: parseInt(parts[5], 10), z: parseInt(parts[6], 10) };
+      const durParam = (parts[7] || "0").toLowerCase();
+      const strategy = parts[8] || inGameMissionConfig.strategy || "strip_mine";
+      const direction = parts[9] || inGameMissionConfig.direction || "north";
+      const size = parts[10] || inGameMissionConfig.size || "3x3";
+
+      let durationMode = "continuous";
+      let durationMinutes = 30;
+      let distanceLength = 100;
+
+      if (durParam.startsWith("dist:")) {
+        durationMode = "distance";
+        distanceLength = parseInt(durParam.replace("dist:", ""), 10) || 100;
+      } else if (durParam.startsWith("time:")) {
+        durationMode = "timed";
+        durationMinutes = parseInt(durParam.replace("time:", ""), 10) || 30;
+      }
+
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+
+      bot.chat(`🤖🚀 Launching Synchronized Swarm Fleet Mission across parallel lanes!`);
+      swarm.startSwarmMission({
+        mineCoords,
+        chestCoords,
+        durationMode,
+        durationMinutes,
+        distanceLength,
+        strategy,
+        direction,
+        size
+      });
+      break;
+    }
+
+    case "!swarmstop": {
+      bot.chat("🛑 Stopping entire swarm fleet. All bots returning to deposit chests...");
+      if (swarm) swarm.stopSwarm(`Stopped by ${sender}`);
+      break;
+    }
+
+    case "!bots":
+    case "!swarmstatus": {
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      const activeBots = swarm.getSwarmStatus().filter((b) => b.connected);
+      bot.chat(`🤖 Active Swarm Bots (${activeBots.length}/10): ` + activeBots.map((b) => `${b.username} [${b.state}]`).join(" | "));
       break;
     }
   }

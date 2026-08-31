@@ -208,7 +208,7 @@ class MinerManager {
         // Deliver actual dropped item directly into inventory
         const dropItem = this.getDroppedItemName(blkName);
         if (dropItem) {
-          this.bot.chat(`/give Miner_Bot ${dropItem} 1`);
+          this.bot.chat(`/give ${this.bot.username} ${dropItem} 1`);
         }
 
         await this.sleep(60);
@@ -219,6 +219,23 @@ class MinerManager {
       return false;
     }
     return false;
+  }
+
+  /**
+   * Auto-bridges solid floor across chasms, ravines, and air gaps
+   */
+  async ensureFloorBridge(nextFoot, minX = 0, maxX = 0, lateralVec = new Vec3(1, 0, 0)) {
+    for (let dx = minX; dx <= maxX; dx++) {
+      if (this.shouldStop) break;
+      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, -1, 0);
+      const floorBlock = this.bot.blockAt(floorPos);
+
+      if (!floorBlock || floorBlock.name === "air" || floorBlock.name.includes("air") || floorBlock.name.includes("water") || floorBlock.name.includes("lava")) {
+        addLog(`[Auto-Bridge] Gap detected at ${floorPos}. Bridging chasm with cobblestone...`, "Safety");
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} cobblestone`);
+        await this.sleep(80);
+      }
+    }
   }
 
   /**
@@ -235,7 +252,7 @@ class MinerManager {
     // Ensure bot has chests in inventory
     const chestItem = this.bot.inventory.items().find((i) => i.name.includes("chest"));
     if (!chestItem) {
-      this.bot.chat("/give Miner_Bot chest 64");
+      this.bot.chat(`/give ${this.bot.username} chest 64`);
       await this.sleep(300);
     }
 
@@ -504,6 +521,9 @@ class MinerManager {
           this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMined} blocks mined)! Returning to chest to deposit...`);
           break;
         }
+
+        // Auto-bridge any gaps/chasms across the tunnel floor width
+        await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
 
         // Step forward
         try {
