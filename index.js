@@ -860,8 +860,11 @@ function handleChatCommands(sender, message) {
         inGameMissionConfig.strategy = "ore_hunter";
       } else if (mode.includes("tree") || mode.includes("chop") || mode === "3") {
         inGameMissionConfig.strategy = "tree_chopper";
+      } else if (mode.includes("highway") || mode.includes("road") || mode === "4") {
+        inGameMissionConfig.strategy = "highway_builder";
+        inGameMissionConfig.size = "5x5";
       } else {
-        bot.chat("Usage: !strat strip | ore | tree");
+        bot.chat("Usage: !strat strip | ore | tree | highway");
         return;
       }
       bot.chat(`⚙️ Mining strategy set to: ${inGameMissionConfig.strategy}`);

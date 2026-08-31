@@ -261,6 +261,91 @@ class MinerManager {
   }
 
   /**
+   * Scans and seals any fluid (lava/water) breaches along the excavated tunnel perimeter
+   */
+  async sealFluidHazards(nextFoot, minX = -1, maxX = 1, minY = 0, maxY = 2, lateralVec = new Vec3(1, 0, 0)) {
+    const checks = [];
+    // Check perimeter boundary around the slice (floor, ceiling, walls, front)
+    for (let dy = minY - 1; dy <= maxY + 1; dy++) {
+      for (let dx = minX - 1; dx <= maxX + 1; dx++) {
+        if (dx === minX - 1 || dx === maxX + 1 || dy === minY - 1 || dy === maxY + 1) {
+          const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
+          const blk = this.bot.blockAt(targetPos);
+          if (blk && (blk.name.includes("lava") || blk.name.includes("water"))) {
+            checks.push(targetPos);
+          }
+        }
+      }
+    }
+
+    if (checks.length > 0) {
+      addLog(`[Fluid Barrier] Detected ${checks.length} fluid breaches. Sealing with cobblestone...`, "Safety");
+      for (const pos of checks) {
+        if (this.shouldStop) break;
+        this.bot.chat(`/setblock ${pos.x} ${pos.y} ${pos.z} cobblestone`);
+        await this.sleep(30);
+      }
+    }
+  }
+
+  /**
+   * Constructs finished architectural highway lining (Stone Brick Floor/Walls, Smooth Stone Ceiling, Sea Lanterns)
+   */
+  async constructHighwaySlice(nextFoot, minX = -2, maxX = 2, minY = 0, maxY = 4, lateralVec = new Vec3(1, 0, 0), distanceCovered = 0) {
+    const isLightInterval = (distanceCovered % 6 === 0);
+
+    // 1. Floor: Stone Bricks (at minY - 1)
+    for (let dx = minX; dx <= maxX; dx++) {
+      if (this.shouldStop) break;
+      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+      const floorBlk = this.bot.blockAt(floorPos);
+      if (!floorBlk || floorBlk.name !== "stone_bricks") {
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} stone_bricks`);
+        await this.sleep(20);
+      }
+    }
+
+    // 2. Left & Right Walls: Stone Bricks (at minX - 1 and maxX + 1)
+    for (let dy = minY; dy <= maxY; dy++) {
+      if (this.shouldStop) break;
+      const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+      const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+
+      const leftBlk = this.bot.blockAt(leftPos);
+      if (!leftBlk || leftBlk.name !== "stone_bricks") {
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} stone_bricks`);
+        await this.sleep(20);
+      }
+
+      const rightBlk = this.bot.blockAt(rightPos);
+      if (!rightBlk || rightBlk.name !== "stone_bricks") {
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} stone_bricks`);
+        await this.sleep(20);
+      }
+    }
+
+    // 3. Ceiling: Smooth Stone (at maxY + 1) with embedded Sea Lanterns
+    for (let dx = minX; dx <= maxX; dx++) {
+      if (this.shouldStop) break;
+      const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+      const ceilBlk = this.bot.blockAt(ceilPos);
+
+      // Center ceiling light
+      if (isLightInterval && dx === 0) {
+        if (!ceilBlk || ceilBlk.name !== "sea_lantern") {
+          this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} sea_lantern`);
+          await this.sleep(20);
+        }
+      } else {
+        if (!ceilBlk || ceilBlk.name !== "smooth_stone") {
+          this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} smooth_stone`);
+          await this.sleep(20);
+        }
+      }
+    }
+  }
+
+  /**
    * Automatically places a chest at coordinates if none exists, or equips a chest if needed
    */
   async ensureAndPlaceChest(chestVec) {
@@ -516,7 +601,7 @@ class MinerManager {
       }
 
       // Execute Mining Step based on Strategy
-      if (strategy === "strip_mine") {
+      if (strategy === "strip_mine" || strategy === "highway_builder" || strategy === "highway") {
         const currentPos = this.bot.entity.position.floored();
         const nextFoot = currentPos.plus(stepVec);
 
@@ -532,7 +617,7 @@ class MinerManager {
           minX = -1; maxX = 1; minY = 0; maxY = 2;
         } else if (size === "4x4") {
           minX = -1; maxX = 2; minY = 0; maxY = 3;
-        } else if (size === "5x5") {
+        } else if (size === "5x5" || strategy.includes("highway")) {
           minX = -2; maxX = 2; minY = 0; maxY = 4;
         }
 
@@ -567,8 +652,19 @@ class MinerManager {
           break;
         }
 
-        // Auto-bridge any gaps/chasms across the tunnel floor width
-        await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
+        // Auto-Seal any lava or water breaches around the slice
+        await this.sealFluidHazards(nextFoot, minX, maxX, minY, maxY, lateralVec);
+
+        // If Highway Builder mode, construct architectural lining (stone bricks, smooth stone, sea lanterns)
+        if (strategy.includes("highway")) {
+          await this.constructHighwaySlice(nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered);
+        } else {
+          // Standard Mining: Auto-bridge foundation & place torches
+          await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
+          if (distanceCovered % 8 === 0) {
+            await this.placeTorch(this.bot.entity.position.floored());
+          }
+        }
 
         // Step forward
         try {
@@ -581,11 +677,6 @@ class MinerManager {
         }
 
         distanceCovered++;
-
-        // Place torch every 8 blocks
-        if (distanceCovered % 8 === 0) {
-          await this.placeTorch(this.bot.entity.position.floored());
-        }
       } else if (strategy === "ore_hunter") {
         const targetBlocks = this.bot.findBlocks({
           matching: (b) => b && (b.name.includes("ore") || b.name.includes("debris") || b.name.includes("raw_")),
