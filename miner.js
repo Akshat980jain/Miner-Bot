@@ -182,6 +182,68 @@ class MinerManager {
   }
 
   /**
+   * Automatically places a chest at coordinates if none exists, or equips a chest if needed
+   */
+  async ensureAndPlaceChest(chestVec) {
+    let chestBlock = this.bot.blockAt(chestVec);
+    if (chestBlock && chestBlock.name.includes("chest")) {
+      return chestBlock;
+    }
+
+    addLog(`[Auto-Chest] No chest found at ${chestVec}. Deploying chest automatically...`, "Inventory");
+
+    // Ensure bot has chests in inventory
+    const chestItem = this.bot.inventory.items().find((i) => i.name.includes("chest"));
+    if (!chestItem) {
+      this.bot.chat("/give Miner_Bot chest 64");
+      await this.sleep(300);
+    }
+
+    try {
+      // Check support block beneath
+      const belowVec = chestVec.offset(0, -1, 0);
+      let belowBlock = this.bot.blockAt(belowVec);
+      if (!belowBlock || belowBlock.name === "air" || belowBlock.name.includes("air")) {
+        this.bot.chat(`/setblock ${belowVec.x} ${belowVec.y} ${belowVec.z} cobblestone`);
+        await this.sleep(150);
+      }
+
+      // If existing block at chest position is obstacle (dirt, stone), dig it first
+      if (chestBlock && chestBlock.name !== "air" && !chestBlock.name.includes("air")) {
+        await this.breakAndCollectBlock(chestBlock);
+      }
+
+      // Place Chest
+      const cItem = this.bot.inventory.items().find((i) => i.name === "chest" || i.name.includes("chest"));
+      if (cItem) {
+        await this.bot.equip(cItem, "hand");
+        belowBlock = this.bot.blockAt(belowVec);
+        if (belowBlock) {
+          try {
+            await this.bot.placeBlock(belowBlock, new Vec3(0, 1, 0));
+            await this.sleep(250);
+          } catch (_) {}
+        }
+      }
+
+      chestBlock = this.bot.blockAt(chestVec);
+      if (!chestBlock || !chestBlock.name.includes("chest")) {
+        this.bot.chat(`/setblock ${chestVec.x} ${chestVec.y} ${chestVec.z} chest`);
+        await this.sleep(200);
+        chestBlock = this.bot.blockAt(chestVec);
+      }
+
+      addLog(`[Auto-Chest] Chest successfully deployed at (${chestVec.x}, ${chestVec.y}, ${chestVec.z})!`, "Inventory");
+      return chestBlock;
+    } catch (e) {
+      addLog(`[Auto-Chest] Placement fallback: ${e.message}. Using setblock...`, "Inventory");
+      this.bot.chat(`/setblock ${chestVec.x} ${chestVec.y} ${chestVec.z} chest`);
+      await this.sleep(200);
+      return this.bot.blockAt(chestVec);
+    }
+  }
+
+  /**
    * DEPOSIT & SORT ALL COLLECTED ITEMS INTO CHEST
    */
   async depositAndSortAllItems(chestCoords) {
@@ -198,15 +260,15 @@ class MinerManager {
       await this.bot.pathfinder.goto(new GoalNear(chestVec.x, chestVec.y, chestVec.z, 2));
 
       this.state = "DEPOSITING_SORTING";
-      const chestBlock = this.bot.blockAt(chestVec);
+      let chestBlock = await this.ensureAndPlaceChest(chestVec);
 
       if (!chestBlock || !chestBlock.name.includes("chest")) {
-        addLog(`[Chest Error] Block at (${chestVec.x}, ${chestVec.y}, ${chestVec.z}) is not a chest! (${chestBlock?.name})`, "Inventory");
+        addLog(`[Chest Error] Could not find or deploy chest at (${chestVec.x}, ${chestVec.y}, ${chestVec.z})!`, "Inventory");
         return false;
       }
 
       addLog("[Chest] Opening container and sorting all items...", "Inventory");
-      const container = await this.bot.openContainer(chestBlock);
+      let container = await this.bot.openContainer(chestBlock);
 
       // Get all deposit-eligible items (Tier >= 1) sorted by category priority
       const itemsToDeposit = this.bot.inventory
@@ -220,21 +282,36 @@ class MinerManager {
         try {
           await container.deposit(item.type, null, item.count);
           depositedCount += item.count;
-          await this.sleep(80);
+          await this.sleep(60);
         } catch (depositErr) {
           if (depositErr.message && depositErr.message.includes("full")) {
-            addLog("[Chest Warning] Chest is completely full!", "Inventory");
-            break;
+            addLog("[Chest Warning] Chest is full! Auto-expanding storage with adjacent chest...", "Inventory");
+            try { container.close(); } catch (_) {}
+
+            // Auto-expand: place second chest on adjacent block
+            const adjacentOffsets = [new Vec3(1, 0, 0), new Vec3(-1, 0, 0), new Vec3(0, 0, 1), new Vec3(0, 0, -1)];
+            for (const off of adjacentOffsets) {
+              const adjVec = chestVec.plus(off);
+              const adjBlock = this.bot.blockAt(adjVec);
+              if (adjBlock && (adjBlock.name === "air" || !adjBlock.name.includes("chest"))) {
+                await this.ensureAndPlaceChest(adjVec);
+                chestBlock = this.bot.blockAt(adjVec);
+                if (chestBlock && chestBlock.name.includes("chest")) {
+                  container = await this.bot.openContainer(chestBlock);
+                  break;
+                }
+              }
+            }
           }
         }
       }
 
-      container.close();
+      try { container.close(); } catch (_) {}
       this.stats.chestTrips++;
       addLog(`[Chest] Successfully deposited and sorted ${depositedCount} items. (Trip #${this.stats.chestTrips})`, "Inventory");
       return true;
     } catch (err) {
-      addLog(`[Chest Error] Deposit failed: ${err.message}`, "Inventory");
+      addLog(`[Chest Error] Deposit hitch: ${err.message}`, "Inventory");
       return false;
     }
   }

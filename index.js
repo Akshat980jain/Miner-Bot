@@ -665,7 +665,8 @@ function createMinerBot() {
         bot.chat("/gamemode creative");
         bot.chat("/give Miner_Bot netherite_pickaxe 1");
         bot.chat("/give Miner_Bot torch 64");
-        addLog("[Gamemode] Switched to Creative Mode & equipped tools.", "General");
+        bot.chat("/give Miner_Bot chest 64");
+        addLog("[Gamemode] Switched to Creative Mode & equipped tools & chests.", "General");
       }, 2500);
 
       bot.on("game", () => {
