@@ -654,9 +654,10 @@ function createMinerBot() {
 
   bot.once("spawn", () => {
     botState.connected = true;
-    botState.reconnectAttempts = 0;
-    isReconnecting = false;
-    addLog(`[+] Miner Bot spawned on server (Minecraft Version: ${bot.version})`, "General");
+    if (!swarm) {
+      swarm = new SwarmManager(config.server, addLog, () => {});
+    }
+    swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
 
     const mcData = require("minecraft-data")(bot.version);
     const defaultMove = new Movements(bot, mcData);

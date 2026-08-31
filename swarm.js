@@ -1,12 +1,16 @@
 const mineflayer = require("mineflayer");
 const { pathfinder, Movements } = require("mineflayer-pathfinder");
+const autoeat = require("mineflayer-auto-eat").plugin;
+const toolPlugin = require("mineflayer-tool").plugin;
+const collectBlockPlugin = require("mineflayer-collectblock").plugin;
 const { Vec3 } = require("vec3");
 const Miner = require("./miner");
 const Safety = require("./safety");
+const config = require("./settings.json");
 
 class SwarmManager {
   constructor(serverConfig, addLogCallback, broadcastStateCallback) {
-    this.serverConfig = serverConfig;
+    this.serverConfig = serverConfig || config.server;
     this.addLog = addLogCallback || console.log;
     this.broadcastState = broadcastStateCallback || (() => {});
     this.bots = new Map(); // id (1..10) -> { bot, miner, safety, id, username, connected }
@@ -33,22 +37,29 @@ class SwarmManager {
     }
 
     const username = this.getBotName(id);
-    this.addLog(`[Swarm] Connecting ${username} to ${this.serverConfig.ip}:${this.serverConfig.port}...`, "Swarm");
+    const host = this.serverConfig.ip || config.server.ip;
+    const port = parseInt(this.serverConfig.port || config.server.port, 10);
+    const version = this.serverConfig.version || config.server.version || "1.21.4";
+
+    this.addLog(`[Swarm] Connecting ${username} to ${host}:${port}...`, "Swarm");
 
     try {
       const bot = mineflayer.createBot({
-        host: this.serverConfig.ip,
-        port: parseInt(this.serverConfig.port, 10),
+        host: host,
+        port: port,
         username: username,
-        version: this.serverConfig.version || false,
+        version: version,
         auth: "offline",
-        checkTimeoutInterval: 60000
+        checkTimeoutInterval: 120000
       });
 
       bot.loadPlugin(pathfinder);
+      bot.loadPlugin(autoeat);
+      bot.loadPlugin(toolPlugin);
+      bot.loadPlugin(collectBlockPlugin);
 
-      const safety = new Safety(bot, this.addLog);
-      const miner = new Miner(bot, safety, this.addLog);
+      const safety = new Safety(bot, config);
+      const miner = new Miner(bot, config, safety);
 
       const botEntry = {
         id,
@@ -65,7 +76,7 @@ class SwarmManager {
         botEntry.connected = true;
         this.addLog(`[Swarm] ✅ ${username} spawned successfully in world!`, "Swarm");
 
-        // Initialize pathfinder
+        // Initialize pathfinder movements
         try {
           const mcData = require("minecraft-data")(bot.version);
           const defaultMove = new Movements(bot, mcData);
@@ -75,19 +86,23 @@ class SwarmManager {
           bot.pathfinder.setMovements(defaultMove);
         } catch (_) {}
 
-        // Auto-auth (register/login for Aternos servers), Creative mode & tool supply
+        safety.init();
+
+        // Auto-auth (register/login for Aternos cracked auth)
         const pass = "chalol78";
         setTimeout(() => {
           bot.chat(`/register ${pass} ${pass}`);
           bot.chat(`/login ${pass}`);
         }, 1200);
 
+        // Creative mode & tool supply
         setTimeout(() => {
           bot.chat("/gamemode creative");
           bot.chat(`/give ${username} netherite_pickaxe 1`);
           bot.chat(`/give ${username} torch 64`);
           bot.chat(`/give ${username} chest 64`);
           bot.chat(`/give ${username} cobblestone 64`);
+          bot.chat(`🤖 ${username} ready for mining operations!`);
         }, 2200);
 
         this.broadcastState();
@@ -125,12 +140,12 @@ class SwarmManager {
    */
   async spawnSwarm(count = 3) {
     const targetCount = Math.min(Math.max(count, 1), this.maxBots);
-    this.addLog(`[Swarm] Spawning Swarm Fleet of ${targetCount} Bots...`, "Swarm");
+    this.addLog(`[Swarm] Spawning Swarm Fleet up to ${targetCount} Bots...`, "Swarm");
 
-    // Bot 1 is the primary bot; spawn bots 2 through targetCount
+    // Bot 1 is primary; spawn bots 2 through targetCount
     for (let id = 2; id <= targetCount; id++) {
       await this.spawnBot(id);
-      await this.sleep(1200); // 1.2s delay between joins for stability
+      await this.sleep(1500); // 1.5s delay between joins for server stability
     }
   }
 
