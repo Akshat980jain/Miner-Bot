@@ -863,23 +863,30 @@ function handleChatCommands(sender, message) {
     }
 
     case "!mission": {
-      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes]
+      // Syntax: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strategy] [direction]
       if (parts.length < 7) {
-        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes]");
+        bot.chat("Usage: !mission <mineX> <mineY> <mineZ> <chestX> <chestY> <chestZ> [minutes] [strat] [dir]");
         return;
       }
-      const mineCoords = { x: parseInt(parts[1]), y: parseInt(parts[2]), z: parseInt(parts[3]) };
-      const chestCoords = { x: parseInt(parts[4]), y: parseInt(parts[5]), z: parseInt(parts[6]) };
-      const durationMinutes = parseInt(parts[7]) || 30;
+      const mineCoords = { x: parseInt(parts[1], 10), y: parseInt(parts[2], 10), z: parseInt(parts[3], 10) };
+      const chestCoords = { x: parseInt(parts[4], 10), y: parseInt(parts[5], 10), z: parseInt(parts[6], 10) };
+      const mins = parts[7] !== undefined ? parseInt(parts[7], 10) : 0;
+      const strategy = parts[8] || inGameMissionConfig.strategy || "strip_mine";
+      const direction = parts[9] || inGameMissionConfig.direction || "north";
 
-      bot.chat(`Launching mission to (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      inGameMissionConfig.mineCoords = mineCoords;
+      inGameMissionConfig.chestCoords = chestCoords;
+      inGameMissionConfig.strategy = strategy;
+      inGameMissionConfig.direction = direction;
+
+      bot.chat(`🚀 Starting ${strategy} (${direction.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
-        durationMode: parts[7] ? "timed" : "continuous",
-        durationMinutes,
-        strategy: inGameMissionConfig.strategy || "strip_mine",
-        direction: inGameMissionConfig.direction || "north"
+        durationMode: mins > 0 ? "timed" : "continuous",
+        durationMinutes: mins > 0 ? mins : 30,
+        strategy,
+        direction
       });
       break;
     }

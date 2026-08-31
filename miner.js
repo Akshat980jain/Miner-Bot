@@ -245,11 +245,13 @@ class MinerManager {
    */
   async startAutonomousMission(missionConfig) {
     if (this.state !== "IDLE" && !this.shouldStop) {
-      addLog(`[Mission] Cannot start — bot is already busy in state: ${this.state}`, "Miner");
-      return;
+      addLog(`[Mission] Interrupting previous state (${this.state}) to launch new mission...`, "Miner");
+      this.stop("Starting new mission");
+      await this.sleep(300);
     }
 
     this.shouldStop = false;
+    this.state = "IDLE";
     this.currentMission = missionConfig;
     this.missionStartTime = Date.now();
 
