@@ -660,6 +660,11 @@ function createMinerBot() {
     }
     swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
 
+    // Auto-login all 10 bots into the server 24/7 permanently
+    setTimeout(() => {
+      if (swarm) swarm.startAllBots();
+    }, 2500);
+
     const mcData = require("minecraft-data")(bot.version);
     const defaultMove = new Movements(bot, mcData);
     defaultMove.canDig = true;
