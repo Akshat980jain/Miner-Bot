@@ -222,24 +222,39 @@ class MinerManager {
   }
 
   /**
-   * Auto-bridges solid floor across chasms, ravines, and air gaps
+   * Auto-bridges a solid 5x5 floor platform across chasms, ravines, and air gaps
    */
-  async ensureFloorBridge(nextFoot, minX = 0, maxX = 0, lateralVec = new Vec3(1, 0, 0)) {
-    for (let dx = minX; dx <= maxX; dx++) {
-      if (this.shouldStop) break;
-      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, -1, 0);
-      const floorBlock = this.bot.blockAt(floorPos);
+  async ensureFloorBridge(nextFoot, minX = -2, maxX = 2, lateralVec = new Vec3(1, 0, 0)) {
+    const floorY = nextFoot.y - 1;
+    let gapFound = false;
 
-      if (!floorBlock || floorBlock.name === "air" || floorBlock.name.includes("air") || floorBlock.name.includes("water") || floorBlock.name.includes("lava")) {
-        const stoneItem = this.bot.inventory.items().find((i) => i.name.includes("cobble") || i.name.includes("stone") || i.name.includes("dirt"));
-        if (stoneItem) {
-          try {
-            await this.bot.equip(stoneItem, "hand");
-            const refBlock = this.bot.blockAt(nextFoot.offset(0, -1, 0));
-            if (refBlock) {
-              await this.bot.placeBlock(refBlock, new Vec3(0, 1, 0));
-            }
-          } catch (_) {}
+    // Check if any air, void, water, or lava exists within the 5x5 region beneath the bot
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        const checkPos = new Vec3(nextFoot.x + dx, floorY, nextFoot.z + dz);
+        const blk = this.bot.blockAt(checkPos);
+        if (!blk || blk.name === "air" || blk.name.includes("air") || blk.name.includes("water") || blk.name.includes("lava")) {
+          gapFound = true;
+          break;
+        }
+      }
+      if (gapFound) break;
+    }
+
+    if (!gapFound) return;
+
+    addLog(`[Auto-Bridge] Void/Ravine detected. Constructing 5x5 solid foundation beneath (${nextFoot.x}, ${floorY}, ${nextFoot.z})...`, "Safety");
+
+    // Construct the solid 5x5 cobblestone foundation platform
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dz = -2; dz <= 2; dz++) {
+        if (this.shouldStop) break;
+        const floorPos = new Vec3(nextFoot.x + dx, floorY, nextFoot.z + dz);
+        const floorBlock = this.bot.blockAt(floorPos);
+
+        if (!floorBlock || floorBlock.name === "air" || floorBlock.name.includes("air") || floorBlock.name.includes("water") || floorBlock.name.includes("lava")) {
+          this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} cobblestone`);
+          await this.sleep(30);
         }
       }
     }

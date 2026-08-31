@@ -701,6 +701,12 @@ function createMinerBot() {
         bot.chat("/give Miner_Bot torch 64");
         bot.chat("/give Miner_Bot chest 64");
         addLog("[Gamemode] Switched to Creative Mode & silenced admin command feedback.", "General");
+
+        for (let i = 2; i <= 10; i++) {
+          setTimeout(() => {
+            bot.chat(`/op Miner_Bot_${i}`);
+          }, 2000 + (i * 400));
+        }
       }, 2500);
 
       bot.on("game", () => {
