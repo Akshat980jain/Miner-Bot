@@ -14,8 +14,9 @@ class SwarmManager {
     this.addLog = addLogCallback || console.log;
     this.broadcastState = broadcastStateCallback || (() => {});
     this.bots = new Map(); // id (1..10) -> { bot, miner, safety, id, username, connected }
-    this.reconnectTimers = new Map();
     this.heartbeatTimers = new Map();
+    this.reconnectQueue = [];
+    this.isProcessingQueue = false;
     this.maxBots = 10;
     this.autoStartTriggered = false;
   }
@@ -26,143 +27,164 @@ class SwarmManager {
   }
 
   /**
-   * Starts and maintains all 10 bots logged in 24/7
+   * Starts and maintains all 10 bots logged in 24/7 with throttle-safe sequential joins
    */
   async startAllBots() {
     if (this.autoStartTriggered) return;
     this.autoStartTriggered = true;
-    this.addLog("[Swarm] 🌟 Auto-logging all 10 Miner Bots into the server 24/7...", "Swarm");
+    this.addLog("[Swarm] 🌟 Sequential auto-login initiating for all 10 Miner Bots...", "Swarm");
 
     for (let id = 2; id <= this.maxBots; id++) {
-      await this.spawnBot(id);
-      await this.sleep(2500); // 2.5s staggered join delay for server stability
+      try {
+        await this.spawnBotAndWait(id);
+      } catch (err) {
+        this.addLog(`[Swarm] Bot ${id} join delayed: ${err.message}. Queued for retry.`, "Swarm");
+        this.enqueueReconnect(id);
+      }
+      await this.sleep(4500); // 4.5s safe delay to respect server connection throttle
     }
   }
 
   /**
-   * Spawn a specific bot by ID (1..10) with resilient auto-reconnect
+   * Spawn a bot and await its spawn handshake before proceeding
    */
-  async spawnBot(id) {
-    if (id < 1 || id > this.maxBots) return null;
+  spawnBotAndWait(id) {
+    return new Promise((resolve, reject) => {
+      if (this.bots.has(id) && this.bots.get(id).connected) {
+        return resolve(this.bots.get(id));
+      }
 
-    if (this.bots.has(id) && this.bots.get(id).connected) {
-      return this.bots.get(id);
-    }
+      const username = this.getBotName(id);
+      const host = this.serverConfig.ip || config.server.ip;
+      const port = parseInt(this.serverConfig.port || config.server.port, 10);
+      const version = this.serverConfig.version || config.server.version || "1.21.4";
 
-    if (this.reconnectTimers.has(id)) {
-      clearTimeout(this.reconnectTimers.get(id));
-      this.reconnectTimers.delete(id);
-    }
+      this.addLog(`[Swarm] Connecting ${username} (${id}/10) to ${host}:${port}...`, "Swarm");
 
-    const username = this.getBotName(id);
-    const host = this.serverConfig.ip || config.server.ip;
-    const port = parseInt(this.serverConfig.port || config.server.port, 10);
-    const version = this.serverConfig.version || config.server.version || "1.21.4";
+      let resolved = false;
 
-    this.addLog(`[Swarm] Logging in ${username} to ${host}:${port}...`, "Swarm");
+      try {
+        const bot = mineflayer.createBot({
+          host: host,
+          port: port,
+          username: username,
+          version: version,
+          auth: "offline",
+          checkTimeoutInterval: 0,
+          hideErrors: true
+        });
 
-    try {
-      const bot = mineflayer.createBot({
-        host: host,
-        port: port,
-        username: username,
-        version: version,
-        auth: "offline",
-        checkTimeoutInterval: 0, // Disable client timeout drops
-        hideErrors: true
-      });
+        bot.loadPlugin(pathfinder);
+        bot.loadPlugin(autoeat);
+        bot.loadPlugin(toolPlugin);
+        bot.loadPlugin(collectBlockPlugin);
 
-      bot.loadPlugin(pathfinder);
-      bot.loadPlugin(autoeat);
-      bot.loadPlugin(toolPlugin);
-      bot.loadPlugin(collectBlockPlugin);
+        const safety = new Safety(bot, config);
+        const miner = new Miner(bot, config, safety);
 
-      const safety = new Safety(bot, config);
-      const miner = new Miner(bot, config, safety);
+        const botEntry = {
+          id,
+          username,
+          bot,
+          miner,
+          safety,
+          connected: false
+        };
 
-      const botEntry = {
-        id,
-        username,
-        bot,
-        miner,
-        safety,
-        connected: false
-      };
+        this.bots.set(id, botEntry);
 
-      this.bots.set(id, botEntry);
+        bot.once("spawn", () => {
+          botEntry.connected = true;
+          this.addLog(`[Swarm] ✅ ${username} successfully joined and spawned!`, "Swarm");
 
-      bot.once("spawn", () => {
-        botEntry.connected = true;
-        this.addLog(`[Swarm] ✅ ${username} logged in and ready in world!`, "Swarm");
+          // Initialize pathfinder movements
+          try {
+            const mcData = require("minecraft-data")(bot.version);
+            const defaultMove = new Movements(bot, mcData);
+            defaultMove.allowFreeMotion = true;
+            defaultMove.canDig = true;
+            defaultMove.allow1by1towers = false;
+            bot.pathfinder.setMovements(defaultMove);
+          } catch (_) {}
 
-        // Initialize pathfinder movements
-        try {
-          const mcData = require("minecraft-data")(bot.version);
-          const defaultMove = new Movements(bot, mcData);
-          defaultMove.allowFreeMotion = true;
-          defaultMove.canDig = true;
-          defaultMove.allow1by1towers = false;
-          bot.pathfinder.setMovements(defaultMove);
-        } catch (_) {}
+          safety.init();
 
-        safety.init();
+          // Auto-auth (register/login for Aternos cracked auth)
+          const pass = "chalol78";
+          setTimeout(() => {
+            bot.chat(`/register ${pass} ${pass}`);
+            bot.chat(`/login ${pass}`);
+          }, 1000);
 
-        // Auto-auth (register/login for Aternos cracked auth)
-        const pass = "chalol78";
-        setTimeout(() => {
-          bot.chat(`/register ${pass} ${pass}`);
-          bot.chat(`/login ${pass}`);
-        }, 1200);
+          // Creative mode, tool supply & auto-teleport to player so bots gather at player's location
+          setTimeout(() => {
+            bot.chat("/gamemode creative");
+            bot.chat(`/give ${username} netherite_pickaxe 1`);
+            bot.chat(`/give ${username} torch 64`);
+            bot.chat(`/give ${username} chest 64`);
+            bot.chat(`/give ${username} cobblestone 64`);
+            // Teleport to player location so all bots are visible right beside Akshat_Jain!
+            bot.chat(`/tp ${username} Akshat_Jain`);
+          }, 2200);
 
-        // Creative mode & tool supply
-        setTimeout(() => {
-          bot.chat("/gamemode creative");
-          bot.chat(`/give ${username} netherite_pickaxe 1`);
-          bot.chat(`/give ${username} torch 64`);
-          bot.chat(`/give ${username} chest 64`);
-          bot.chat(`/give ${username} cobblestone 64`);
-        }, 2200);
+          // Anti-AFK heartbeat
+          if (this.heartbeatTimers.has(id)) clearInterval(this.heartbeatTimers.get(id));
+          const hb = setInterval(() => {
+            if (bot && botEntry.connected) {
+              try { bot.swingArm(); } catch (_) {}
+            }
+          }, 25000);
+          this.heartbeatTimers.set(id, hb);
 
-        // Anti-AFK heartbeat (swing arm every 25s so server never kicks)
-        if (this.heartbeatTimers.has(id)) clearInterval(this.heartbeatTimers.get(id));
-        const hb = setInterval(() => {
-          if (bot && botEntry.connected) {
-            try { bot.swingArm(); } catch (_) {}
+          this.broadcastState();
+
+          if (!resolved) {
+            resolved = true;
+            resolve(botEntry);
           }
-        }, 25000);
-        this.heartbeatTimers.set(id, hb);
+        });
 
-        this.broadcastState();
-      });
+        bot.on("kicked", (reason) => {
+          this.addLog(`[Swarm] ${username} was kicked: ${reason}`, "Swarm");
+          botEntry.connected = false;
+          this.cleanUpBot(id);
+          this.enqueueReconnect(id);
+          if (!resolved) {
+            resolved = true;
+            reject(new Error(`Kicked: ${reason}`));
+          }
+        });
 
-      bot.on("chat", (sender, message) => {
-        this.handleBotChat(id, sender, message);
-      });
+        bot.on("end", () => {
+          this.addLog(`[Swarm] ${username} connection ended.`, "Swarm");
+          botEntry.connected = false;
+          this.cleanUpBot(id);
+          this.enqueueReconnect(id);
+          if (!resolved) {
+            resolved = true;
+            reject(new Error("Connection ended"));
+          }
+        });
 
-      bot.on("kicked", (reason) => {
-        this.addLog(`[Swarm] ${username} was kicked: ${reason}. Auto-reconnecting...`, "Swarm");
-        botEntry.connected = false;
-        this.cleanUpBot(id);
-        this.scheduleBotReconnect(id);
-      });
+        bot.on("error", (err) => {
+          this.addLog(`[Swarm] ${username} error: ${err.message}`, "Swarm");
+        });
 
-      bot.on("end", () => {
-        this.addLog(`[Swarm] ${username} connection ended. Auto-reconnecting...`, "Swarm");
-        botEntry.connected = false;
-        this.cleanUpBot(id);
-        this.scheduleBotReconnect(id);
-      });
+        // Fail-safe timeout for single join attempt
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            reject(new Error("Connection handshake timeout"));
+          }
+        }, 15000);
 
-      bot.on("error", (err) => {
-        this.addLog(`[Swarm] ${username} network event: ${err.message}`, "Swarm");
-      });
-
-      return botEntry;
-    } catch (e) {
-      this.addLog(`[Swarm] Failed to connect ${username}: ${e.message}. Retrying...`, "Swarm");
-      this.scheduleBotReconnect(id);
-      return null;
-    }
+      } catch (e) {
+        if (!resolved) {
+          resolved = true;
+          reject(e);
+        }
+      }
+    });
   }
 
   /**
@@ -183,16 +205,32 @@ class SwarmManager {
   }
 
   /**
-   * Automatically reconnects any bot that drops
+   * Enqueue a bot into the sequential reconnect queue to avoid throttling
    */
-  scheduleBotReconnect(id) {
-    if (this.reconnectTimers.has(id)) return;
-    const delay = 4000 + Math.floor(Math.random() * 3000);
-    const timer = setTimeout(() => {
-      this.reconnectTimers.delete(id);
-      this.spawnBot(id);
-    }, delay);
-    this.reconnectTimers.set(id, timer);
+  enqueueReconnect(id) {
+    if (id <= 1 || id > this.maxBots) return;
+    if (!this.reconnectQueue.includes(id)) {
+      this.reconnectQueue.push(id);
+    }
+    this.processReconnectQueue();
+  }
+
+  async processReconnectQueue() {
+    if (this.isProcessingQueue || this.reconnectQueue.length === 0) return;
+    this.isProcessingQueue = true;
+
+    while (this.reconnectQueue.length > 0) {
+      const nextId = this.reconnectQueue.shift();
+      await this.sleep(4000); // 4s cooldown between reconnect attempts
+      try {
+        await this.spawnBotAndWait(nextId);
+      } catch (err) {
+        this.addLog(`[Swarm] Reconnect for Bot ${nextId} failed (${err.message}). Re-queuing...`, "Swarm");
+        this.reconnectQueue.push(nextId);
+      }
+    }
+
+    this.isProcessingQueue = false;
   }
 
   /**
@@ -360,16 +398,6 @@ class SwarmManager {
       }
     });
     this.addLog(`[Swarm] All bots stopped: ${reason}`, "Swarm");
-  }
-
-  handleBotChat(botId, sender, message) {
-    if (!message.startsWith("!")) return;
-    const parts = message.trim().split(" ");
-    const trigger = parts[0].toLowerCase();
-
-    if (trigger === "!swarmstop") {
-      this.stopSwarm(`Stopped by ${sender}`);
-    }
   }
 
   getSwarmStatus() {
