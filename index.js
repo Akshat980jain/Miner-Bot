@@ -691,39 +691,35 @@ function createMinerBot() {
       }, 1500);
     }
 
-    const applyGodSurvival = () => {
-      bot.chat("/gamemode survival");
-      bot.chat(`/effect give ${bot.username} minecraft:resistance infinite 255 true`);
-      bot.chat(`/effect give ${bot.username} minecraft:fire_resistance infinite 255 true`);
-      bot.chat(`/effect give ${bot.username} minecraft:saturation infinite 255 true`);
-      bot.chat(`/effect give ${bot.username} minecraft:water_breathing infinite 255 true`);
-      addLog("[Gamemode] Switched to Invincible Survival Mode (Loot Pickup Enabled).", "General");
-    };
+    if (config.server?.tryCreative !== false) {
+      setTimeout(() => {
+        bot.chat("/gamemode creative");
+        addLog("[Gamemode] Switched to Creative Mode.", "General");
+      }, 3500);
 
-    setTimeout(applyGodSurvival, 3500);
+      // Pre-spawn and maintain full fleet of Bots (1 to 10) with 6s gentle spacing
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.registerPrimaryBot(bot, miner, safety);
+      setTimeout(() => {
+        addLog("[Fleet] Initializing swarm fleet manager...", "Swarm");
+      }, 6000);
 
-    // Pre-spawn and maintain full fleet of Bots (1 to 10) with 6s gentle spacing
-    if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-    swarm.registerPrimaryBot(bot, miner, safety);
-    setTimeout(() => {
-      addLog("[Fleet] Initializing swarm fleet manager...", "Swarm");
-    }, 6000);
+      bot.on("game", () => {
+        if (bot.game && bot.game.gameMode !== "creative") {
+          bot.chat("/gamemode creative");
+        }
+      });
 
-    bot.on("game", () => {
-      if (bot.game && bot.game.gameMode !== "survival") {
-        applyGodSurvival();
-      }
-    });
+      bot.on("respawn", () => {
+        setTimeout(() => bot.chat("/gamemode creative"), 1000);
+      });
 
-    bot.on("respawn", () => {
-      setTimeout(applyGodSurvival, 1000);
-    });
-
-    setInterval(() => {
-      if (bot && botState.connected && bot.game && bot.game.gameMode !== "survival") {
-        applyGodSurvival();
-      }
-    }, 20000);
+      setInterval(() => {
+        if (bot && botState.connected && bot.game && bot.game.gameMode !== "creative") {
+          bot.chat("/gamemode creative");
+        }
+      }, 20000);
+    }
   });
 
   // Listen for player right-click / punch interactions safely

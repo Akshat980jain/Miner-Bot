@@ -133,11 +133,7 @@ class SwarmManager {
           }, 1500);
 
           setTimeout(() => {
-            bot.chat("/gamemode survival");
-            bot.chat(`/effect give ${bot.username} minecraft:resistance infinite 255 true`);
-            bot.chat(`/effect give ${bot.username} minecraft:fire_resistance infinite 255 true`);
-            bot.chat(`/effect give ${bot.username} minecraft:saturation infinite 255 true`);
-            bot.chat(`/effect give ${bot.username} minecraft:water_breathing infinite 255 true`);
+            bot.chat("/gamemode creative");
           }, 3500);
 
           // Anti-AFK heartbeat (swing arm every 25s so server never kicks for AFK)

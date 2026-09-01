@@ -566,14 +566,6 @@ class MinerManager {
       return;
     }
 
-    // Ensure Invincible Survival Mode so items can be vacuumed into inventory
-    this.bot.chat(`/gamemode survival`);
-    this.bot.chat(`/effect give ${this.bot.username} minecraft:resistance infinite 255 true`);
-    this.bot.chat(`/effect give ${this.bot.username} minecraft:fire_resistance infinite 255 true`);
-    this.bot.chat(`/effect give ${this.bot.username} minecraft:saturation infinite 255 true`);
-    this.bot.chat(`/effect give ${this.bot.username} minecraft:water_breathing infinite 255 true`);
-    await this.sleep(100);
-
     if (durationMode === "timed") {
       this.missionEndTime = Date.now() + durationMinutes * 60 * 1000;
       addLog(`[Mission] Launched Timed Mission (${durationMinutes} mins, ${size}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`, "Miner");
