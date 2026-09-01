@@ -1121,12 +1121,15 @@ function scheduleReconnect() {
 }
 
 process.on("uncaughtException", (err) => {
-  addLog(`[FATAL] Uncaught Exception: ${err.message}`, "General");
-  if (!isReconnecting) scheduleReconnect();
+  addLog(`[Error Handled] ${err.message}`, "General");
+  // Only reconnect if main bot disconnected
+  if (!bot || !botState.connected) {
+    if (!isReconnecting) scheduleReconnect();
+  }
 });
 
 process.on("unhandledRejection", (reason) => {
-  addLog(`[FATAL] Unhandled Rejection: ${reason}`, "General");
+  addLog(`[Warning Handled] ${reason}`, "General");
 });
 
 // START

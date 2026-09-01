@@ -81,9 +81,15 @@ class SwarmManager {
           username: username,
           version: version,
           auth: "offline",
-          checkTimeoutInterval: 0, // Disable timeout disconnects
+          checkTimeoutInterval: 0,
           hideErrors: true
         });
+
+        if (bot._client) {
+          bot._client.on("error", (err) => {
+            this.addLog(`[Swarm] Socket notice (${username}): ${err.message}`, "Swarm");
+          });
+        }
 
         bot.loadPlugin(pathfinder);
         bot.loadPlugin(autoeat);
@@ -151,7 +157,6 @@ class SwarmManager {
           this.addLog(`[Swarm] ${username} was kicked: ${reason}`, "Swarm");
           botEntry.connected = false;
           this.cleanUpBot(id);
-          this.enqueueReconnect(id);
           if (!resolved) {
             resolved = true;
             reject(new Error(`Kicked: ${reason}`));
@@ -162,7 +167,6 @@ class SwarmManager {
           this.addLog(`[Swarm] ${username} disconnected.`, "Swarm");
           botEntry.connected = false;
           this.cleanUpBot(id);
-          this.enqueueReconnect(id);
           if (!resolved) {
             resolved = true;
             reject(new Error("Connection ended"));
@@ -170,7 +174,7 @@ class SwarmManager {
         });
 
         bot.on("error", (err) => {
-          this.addLog(`[Swarm] ${username} error: ${err.message}`, "Swarm");
+          this.addLog(`[Swarm] ${username} handled notice: ${err.message}`, "Swarm");
         });
 
         // Fail-safe timeout for single join attempt
