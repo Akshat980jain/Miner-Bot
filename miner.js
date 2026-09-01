@@ -178,10 +178,11 @@ class MinerManager {
   }
 
   /**
-   * Checks if inventory is full (less than 3 free slots)
+   * Checks if inventory is full (0 free slots in survival; never in creative)
    */
   isInventoryFull() {
-    return this.bot.inventory.emptySlotCount() <= 2;
+    if (this.bot.game && this.bot.game.gameMode === "creative") return false;
+    return this.bot.inventory.emptySlotCount() === 0;
   }
 
   /**
@@ -632,7 +633,11 @@ class MinerManager {
 
         // Construct Architectural Structure Theme (Subway, Castle, Aquarium, Cyberpunk, Mineshaft, Nether, Highway)
         if (isStructureTheme) {
-          await this.constructThemeSlice(strategy, nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered, direction);
+          try {
+            await this.constructThemeSlice(strategy, nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered, direction);
+          } catch (themeErr) {
+            this.bot.chat(`[${this.bot.username}] ⚠️ Theme Error: ${themeErr.message}`);
+          }
         } else {
           // Standard Mining: Auto-bridge 5x5 foundation & place torches
           await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
@@ -654,6 +659,10 @@ class MinerManager {
         // OP Teleport sync to guarantee exact block centering
         this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x + 0.5} ${nextFoot.y} ${nextFoot.z + 0.5}`);
         await this.sleep(100);
+
+        if (distanceCovered === 0 || distanceCovered % 10 === 0) {
+          this.bot.chat(`[${this.bot.username}] ⛏️ Step #${distanceCovered + 1} (${strategy}) at (${nextFoot.x}, ${nextFoot.y}, ${nextFoot.z})`);
+        }
 
         distanceCovered++;
       } else if (strategy === "ore_hunter") {
