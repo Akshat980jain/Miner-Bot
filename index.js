@@ -683,39 +683,26 @@ function createMinerBot() {
       };
     }
 
+    // Auto-auth & Creative Mode (Spaced to prevent chat flood kicks)
     if (config.utils && config.utils["auto-auth"] && config.utils["auto-auth"].enabled) {
       const pass = config.utils["auto-auth"].password;
       setTimeout(() => {
-        bot.chat(`/register ${pass} ${pass}`);
         bot.chat(`/login ${pass}`);
       }, 1500);
     }
 
-    // Force Creative Mode Enforcer & Auto Tool Supply & Silence Command Feedback
     if (config.server?.tryCreative !== false) {
       setTimeout(() => {
-        bot.chat("/gamerule sendCommandFeedback false");
-        bot.chat("/gamerule logAdminCommands false");
         bot.chat("/gamemode creative");
-        bot.chat("/give Miner_Bot netherite_pickaxe 1");
-        bot.chat("/give Miner_Bot torch 64");
-        bot.chat("/give Miner_Bot chest 64");
-        addLog("[Gamemode] Switched to Creative Mode & silenced admin command feedback.", "General");
+        addLog("[Gamemode] Switched to Creative Mode.", "General");
+      }, 3500);
 
-        for (let i = 2; i <= 10; i++) {
-          setTimeout(() => {
-            bot.chat(`/op Miner_Bot_${i}`);
-          }, 2000 + (i * 400));
-        }
-
-        // Pre-spawn and maintain full fleet of Bots (1 to 10)
-        if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-        swarm.registerPrimaryBot(bot, miner, safety);
-        setTimeout(() => {
-          addLog("[Fleet] Pre-spawning full 10-bot swarm fleet into world...", "Swarm");
-          swarm.spawnSwarm(10);
-        }, 5000);
-      }, 2500);
+      // Pre-spawn and maintain full fleet of Bots (1 to 10) with 6s gentle spacing
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.registerPrimaryBot(bot, miner, safety);
+      setTimeout(() => {
+        addLog("[Fleet] Initializing swarm fleet manager...", "Swarm");
+      }, 6000);
 
       bot.on("game", () => {
         if (bot.game && bot.game.gameMode !== "creative") {

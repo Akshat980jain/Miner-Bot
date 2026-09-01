@@ -120,34 +120,15 @@ class SwarmManager {
 
           safety.init();
 
-          // Auto-auth (register/login)
+          // Auto-auth (login only - avoid command spam kicks)
           const pass = "chalol78";
           setTimeout(() => {
-            bot.chat(`/register ${pass} ${pass}`);
             bot.chat(`/login ${pass}`);
-          }, 1200);
+          }, 1500);
 
-          // Spaced command execution to prevent server kicking for command spam
           setTimeout(() => {
             bot.chat("/gamemode creative");
-          }, 2400);
-
-          setTimeout(() => {
-            bot.chat(`/give ${username} netherite_pickaxe 1`);
-          }, 3200);
-
-          setTimeout(() => {
-            bot.chat(`/give ${username} torch 64`);
-          }, 3800);
-
-          setTimeout(() => {
-            bot.chat(`/give ${username} chest 64`);
-            bot.chat(`/give ${username} cobblestone 64`);
-          }, 4400);
-
-          setTimeout(() => {
-            bot.chat(`/tp ${username} Akshat_Jain`);
-          }, 5200);
+          }, 3500);
 
           // Anti-AFK heartbeat (swing arm every 25s so server never kicks for AFK)
           if (this.heartbeatTimers.has(id)) clearInterval(this.heartbeatTimers.get(id));
