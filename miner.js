@@ -592,30 +592,12 @@ class MinerManager {
         const clearMaxY = dyOffset === 1 ? maxY + 1 : maxY;
         const clearMinY = dyOffset === -1 ? minY - 1 : minY;
 
-        // Dig / Clear out cross-section slice
-        if (isStructureTheme || isStairs) {
-          // Instant clearance of the entire 3D slice (drops blocks as items)
-          const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0).floored();
-          const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0).floored();
-          this.bot.chat(`/fill ${p1.x} ${p1.y} ${p1.z} ${p2.x} ${p2.y} ${p2.z} air destroy`);
-          this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
-          await this.sleep(40);
-        } else {
-          // Standard Survival Strip Mine: Dig individual blocks within reach
-          for (let dy = clearMaxY; dy >= clearMinY; dy--) {
-            for (let dx = minX; dx <= maxX; dx++) {
-              if (this.shouldStop) break;
-              const currentMined = this.stats.totalBlocksMined - startBlocksMined;
-              if (durationMode === "distance" && currentMined >= targetBlocks) break;
-
-              const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0).floored();
-              const blk = this.bot.blockAt(targetPos);
-              if (blk && blk.name !== "air" && !blk.name.includes("air")) {
-                await this.breakAndCollectBlock(blk);
-              }
-            }
-          }
-        }
+        // Dig / Clear out cross-section slice (Instant 3D Excavation - drops all blocks/ores as items)
+        const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0).floored();
+        const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0).floored();
+        this.bot.chat(`/fill ${p1.x} ${p1.y} ${p1.z} ${p2.x} ${p2.y} ${p2.z} air destroy`);
+        this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
+        await this.sleep(40);
 
         const currentMined = this.stats.totalBlocksMined - startBlocksMined;
         if (durationMode === "distance" && currentMined >= targetBlocks) {
