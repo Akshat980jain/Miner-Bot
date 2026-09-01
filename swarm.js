@@ -314,8 +314,11 @@ class SwarmManager {
       }
 
       const speedParam = parts.find((p) => p.toLowerCase().startsWith("speed:"))?.replace(/speed:/i, "") || "1x";
+      const targetYParam = parts.find((p) => p.toLowerCase().startsWith("targety:") || p.toLowerCase().startsWith("depth:"))?.replace(/targety:|depth:/i, "");
+      const targetY = (targetYParam !== undefined && targetYParam !== "") ? parseInt(targetYParam, 10) : null;
 
-      bot.chat(`🚀 [${targetEntry.username}] Starting ${size} mission (⚡Speed: ${speedParam.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
+      const yLabel = targetY !== null ? ` | 🎯 Target Y: ${targetY}` : "";
+      bot.chat(`🚀 [${targetEntry.username}] Starting ${size} mission (⚡Speed: ${speedParam.toUpperCase()}${yLabel}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
@@ -325,7 +328,8 @@ class SwarmManager {
         strategy,
         direction,
         size,
-        speed: speedParam
+        speed: speedParam,
+        targetY
       }).catch((err) => {
         console.error(`[SWARM FATAL] ${targetEntry.username}:`, err);
         bot.chat(`❌ [${targetEntry.username}] Mission crashed: ${err.message}`);

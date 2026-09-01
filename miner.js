@@ -521,8 +521,11 @@ class MinerManager {
       direction = "north",
       size = "3x3",
       slope = "flat",
-      speed = "1x"
+      speed = "1x",
+      targetY = null
     } = missionConfig;
+
+    const parsedTargetY = (targetY !== null && targetY !== undefined && targetY !== "") ? parseInt(targetY, 10) : null;
 
     const startBlocksMined = this.stats.totalBlocksMined;
     const targetBlocks = distanceLength * (size === "1x2" ? 2 : (size === "4x4" ? 16 : (size === "5x5" ? 25 : 9)));
@@ -631,6 +634,20 @@ class MinerManager {
             await this.bot.pathfinder.goto(new GoalNear(this.resumeMiningPos.x, this.resumeMiningPos.y, this.resumeMiningPos.z, 1));
           } catch (_) {}
           this.state = "MINING";
+        }
+
+        // Check Target Y-Level Limit for Staircases
+        if (parsedTargetY !== null && !isNaN(parsedTargetY)) {
+          const currentY = this.bot.entity ? this.bot.entity.position.floored().y : 64;
+          if ((strategy.includes("down") || slope === "down") && currentY <= parsedTargetY) {
+            this.bot.chat(`🎯 [${this.bot.username}] Reached Target Depth Y=${parsedTargetY}! Completing staircase mission.`);
+            addLog(`[Mission] Reached target depth Y=${parsedTargetY}!`, "Miner");
+            break;
+          } else if ((strategy.includes("up") || slope === "up") && currentY >= parsedTargetY) {
+            this.bot.chat(`🎯 [${this.bot.username}] Reached Target Height Y=${parsedTargetY}! Completing staircase mission.`);
+            addLog(`[Mission] Reached target height Y=${parsedTargetY}!`, "Miner");
+            break;
+          }
         }
 
         // Execute Mining Step based on Strategy (Strip Mine, Staircase, or Architectural Structure Themes)

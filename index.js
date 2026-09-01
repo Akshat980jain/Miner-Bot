@@ -945,8 +945,12 @@ async function handleChatCommands(sender, message) {
       const speedParam = parts.find((p) => p.toLowerCase().startsWith("speed:"))?.replace(/speed:/i, "") || inGameMissionConfig.speed || "1x";
       inGameMissionConfig.speed = speedParam;
 
+      const targetYParam = parts.find((p) => p.toLowerCase().startsWith("targety:") || p.toLowerCase().startsWith("depth:"))?.replace(/targety:|depth:/i, "");
+      const targetY = (targetYParam !== undefined && targetYParam !== "") ? parseInt(targetYParam, 10) : null;
+
+      const yLabel = targetY !== null ? ` | 🎯 Target Y: ${targetY}` : "";
       const durLabel = durationMode === "distance" ? `${distanceLength} Blocks` : (durationMode === "timed" ? `${durationMinutes} Mins` : "24/7 Infinite");
-      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}, ${durLabel}, ⚡Speed: ${speedParam.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}, ${durLabel}, ⚡Speed: ${speedParam.toUpperCase()}${yLabel}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
@@ -956,7 +960,8 @@ async function handleChatCommands(sender, message) {
         strategy,
         direction,
         size,
-        speed: speedParam
+        speed: speedParam,
+        targetY
       }).catch((err) => {
         console.error("[MISSION FATAL]", err);
         bot.chat(`❌ Mission crashed: ${err.message}`);
