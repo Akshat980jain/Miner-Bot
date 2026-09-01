@@ -294,15 +294,16 @@ class MinerManager {
     const t = (theme || "highway").toLowerCase();
     const isInterval4 = (distanceCovered % 4 === 0);
     const isInterval6 = (distanceCovered % 6 === 0);
+    const foot = nextFoot.floored();
 
-    const f1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, minY - 1, 0);
-    const f2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, minY - 1, 0);
-    const lw1 = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, minY, 0);
-    const lw2 = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, maxY, 0);
-    const rw1 = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, minY, 0);
-    const rw2 = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, maxY, 0);
-    const c1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, maxY + 1, 0);
-    const c2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, maxY + 1, 0);
+    const f1 = foot.plus(lateralVec.scaled(minX)).offset(0, minY - 1, 0).floored();
+    const f2 = foot.plus(lateralVec.scaled(maxX)).offset(0, minY - 1, 0).floored();
+    const lw1 = foot.plus(lateralVec.scaled(minX - 1)).offset(0, minY, 0).floored();
+    const lw2 = foot.plus(lateralVec.scaled(minX - 1)).offset(0, maxY, 0).floored();
+    const rw1 = foot.plus(lateralVec.scaled(maxX + 1)).offset(0, minY, 0).floored();
+    const rw2 = foot.plus(lateralVec.scaled(maxX + 1)).offset(0, maxY, 0).floored();
+    const c1 = foot.plus(lateralVec.scaled(minX)).offset(0, maxY + 1, 0).floored();
+    const c2 = foot.plus(lateralVec.scaled(maxX)).offset(0, maxY + 1, 0).floored();
 
     // ── 1. SUBWAY & RAILWAY ────────────────────────────────────────────────
     if (t.includes("subway") || t.includes("rail")) {
@@ -313,8 +314,8 @@ class MinerManager {
       this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
 
       // Central Powered Rail with Redstone Block underneath
-      const railPos = nextFoot.offset(0, minY, 0);
-      const underPos = railPos.offset(0, -1, 0);
+      const railPos = foot.offset(0, minY, 0).floored();
+      const underPos = railPos.offset(0, -1, 0).floored();
       this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} redstone_block`);
       this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} powered_rail`);
       await this.sleep(40);
@@ -331,7 +332,7 @@ class MinerManager {
       this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${wall}`);
 
       if (isInterval6) {
-        const lanternPos = nextFoot.offset(0, maxY, 0);
+        const lanternPos = foot.offset(0, maxY, 0).floored();
         this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
       }
       await this.sleep(40);
@@ -346,7 +347,7 @@ class MinerManager {
       this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${glassType}`);
       this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${glassType}`);
       if (isInterval6) {
-        const seaLight = nextFoot.offset(0, minY - 1, 0);
+        const seaLight = foot.offset(0, minY - 1, 0).floored();
         this.bot.chat(`/setblock ${seaLight.x} ${seaLight.y} ${seaLight.z} sea_lantern`);
       }
       await this.sleep(40);
@@ -362,7 +363,7 @@ class MinerManager {
       const ceilBlk = isInterval6 ? "magenta_stained_glass" : "smooth_quartz";
       this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
 
-      const glowFoot = nextFoot.offset(0, minY - 1, 0);
+      const glowFoot = foot.offset(0, minY - 1, 0).floored();
       this.bot.chat(`/setblock ${glowFoot.x} ${glowFoot.y} ${glowFoot.z} cyan_stained_glass`);
       await this.sleep(40);
       return;
@@ -376,10 +377,10 @@ class MinerManager {
       this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${wall}`);
       this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${wall}`);
 
-      const railPos = nextFoot.offset(0, minY, 0);
+      const railPos = foot.offset(0, minY, 0).floored();
       this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} rail`);
       if (isInterval6) {
-        const lanternPos = nextFoot.offset(0, maxY, 0);
+        const lanternPos = foot.offset(0, maxY, 0).floored();
         this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
       }
       await this.sleep(40);
@@ -420,7 +421,8 @@ class MinerManager {
 
     const dirMap = { north: "south", south: "north", east: "west", west: "east" };
     const facing = slope === "down" ? (dirMap[direction.toLowerCase()] || "south") : (direction.toLowerCase() || "north");
-    this.bot.chat(`/setblock ${stepPos.x} ${stepPos.y} ${stepPos.z} ${stairBlock}[facing=${facing}]`);
+    const sp = stepPos.floored();
+    this.bot.chat(`/setblock ${sp.x} ${sp.y} ${sp.z} ${stairBlock}[facing=${facing}]`);
     await this.sleep(30);
   }
 
@@ -689,7 +691,7 @@ class MinerManager {
         else if (strategy.includes("up") || slope === "up") dyOffset = 1;
 
         const currentPos = this.bot.entity.position.floored();
-        const nextFoot = currentPos.plus(stepVec).offset(0, dyOffset, 0);
+        const nextFoot = currentPos.plus(stepVec).offset(0, dyOffset, 0).floored();
 
         // Lateral Vector perpendicular to movement direction
         let lateralVec = new Vec3(1, 0, 0);
@@ -714,8 +716,8 @@ class MinerManager {
         // Dig / Clear out cross-section slice
         if (isStructureTheme || isStairs) {
           // Instant clearance of the entire 3D slice (drops blocks as items)
-          const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0);
-          const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0);
+          const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0).floored();
+          const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0).floored();
           this.bot.chat(`/fill ${p1.x} ${p1.y} ${p1.z} ${p2.x} ${p2.y} ${p2.z} air destroy`);
           this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
           await this.sleep(40);
@@ -727,7 +729,7 @@ class MinerManager {
               const currentMined = this.stats.totalBlocksMined - startBlocksMined;
               if (durationMode === "distance" && currentMined >= targetBlocks) break;
 
-              const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
+              const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0).floored();
               const blk = this.bot.blockAt(targetPos);
               if (blk && blk.name !== "air" && !blk.name.includes("air")) {
                 await this.breakAndCollectBlock(blk);
@@ -761,16 +763,16 @@ class MinerManager {
           }
         }
 
-        // Step forward / climb / descend
+        // Step forward / climb / descend with centered positioning
         if (dyOffset !== 0 || isStructureTheme) {
-          this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x} ${nextFoot.y} ${nextFoot.z}`);
+          this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x + 0.5} ${nextFoot.y} ${nextFoot.z + 0.5}`);
           await this.sleep(120);
         } else {
           try {
             await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
             await this.bot.pathfinder.goto(new GoalNear(nextFoot.x, nextFoot.y, nextFoot.z, 0));
           } catch (_) {
-            this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x} ${nextFoot.y} ${nextFoot.z}`);
+            this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x + 0.5} ${nextFoot.y} ${nextFoot.z + 0.5}`);
             await this.sleep(120);
           }
         }
