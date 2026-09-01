@@ -261,15 +261,14 @@ class MinerManager {
   }
 
   /**
-   * Scans and seals any fluid (lava/water) breaches along the excavated tunnel perimeter
+   * Universal 360-Degree Fluid Barrier (Lava & Water Sealer)
    */
-  async sealFluidHazards(nextFoot, minX = -1, maxX = 1, minY = 0, maxY = 2, lateralVec = new Vec3(1, 0, 0)) {
+  async sealFluidHazards(centerFoot, minX = -2, maxX = 2, minY = -1, maxY = 5, lateralVec = new Vec3(1, 0, 0)) {
     const checks = [];
-    // Check perimeter boundary around the slice (floor, ceiling, walls, front)
     for (let dy = minY - 1; dy <= maxY + 1; dy++) {
       for (let dx = minX - 1; dx <= maxX + 1; dx++) {
         if (dx === minX - 1 || dx === maxX + 1 || dy === minY - 1 || dy === maxY + 1) {
-          const targetPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
+          const targetPos = centerFoot.plus(lateralVec.scaled(dx)).offset(0, dy, 0);
           const blk = this.bot.blockAt(targetPos);
           if (blk && (blk.name.includes("lava") || blk.name.includes("water"))) {
             checks.push(targetPos);
@@ -283,66 +282,233 @@ class MinerManager {
       for (const pos of checks) {
         if (this.shouldStop) break;
         this.bot.chat(`/setblock ${pos.x} ${pos.y} ${pos.z} cobblestone`);
-        await this.sleep(30);
+        await this.sleep(25);
       }
     }
   }
 
   /**
-   * Constructs finished architectural highway lining (Stone Brick Floor/Walls, Smooth Stone Ceiling, Sea Lanterns)
+   * Modular Architectural Structure Builder (6 Themes)
    */
-  async constructHighwaySlice(nextFoot, minX = -2, maxX = 2, minY = 0, maxY = 4, lateralVec = new Vec3(1, 0, 0), distanceCovered = 0) {
-    const isLightInterval = (distanceCovered % 6 === 0);
+  async constructThemeSlice(theme, nextFoot, minX = -2, maxX = 2, minY = 0, maxY = 4, lateralVec = new Vec3(1, 0, 0), distanceCovered = 0, direction = "north") {
+    const t = (theme || "highway").toLowerCase();
+    const isInterval4 = (distanceCovered % 4 === 0);
+    const isInterval6 = (distanceCovered % 6 === 0);
 
-    // 1. Floor: Stone Bricks (at minY - 1)
-    for (let dx = minX; dx <= maxX; dx++) {
-      if (this.shouldStop) break;
-      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-      const floorBlk = this.bot.blockAt(floorPos);
-      if (!floorBlk || floorBlk.name !== "stone_bricks") {
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} stone_bricks`);
-        await this.sleep(20);
+    // ── 1. SUBWAY & RAILWAY THEME ──────────────────────────────────────────
+    if (t.includes("subway") || t.includes("rail")) {
+      // Floor: Polished Deepslate
+      for (let dx = minX; dx <= maxX; dx++) {
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} polished_deepslate`);
+        // Central Powered Rail with Redstone Torch underneath
+        if (dx === 0) {
+          const railPos = nextFoot.offset(0, minY, 0);
+          const underPos = floorPos.offset(0, -1, 0);
+          this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} redstone_block`);
+          this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} powered_rail`);
+        }
       }
+      // Walls: Smooth Quartz + Dark Prismarine base
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = dy === minY ? "dark_prismarine" : "smooth_quartz";
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      // Ceiling: Smooth Quartz with Sea Lanterns
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = (dx === 0 && isInterval6) ? "sea_lantern" : "smooth_quartz";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+      }
+      await this.sleep(30);
+      return;
     }
 
-    // 2. Left & Right Walls: Stone Bricks (at minX - 1 and maxX + 1)
+    // ── 2. MEDIEVAL CASTLE & DUNGEON THEME ─────────────────────────────────
+    if (t.includes("castle") || t.includes("dungeon")) {
+      const stoneTypes = ["stone_bricks", "mossy_stone_bricks", "cracked_stone_bricks"];
+      // Floor: Mixed Stone Bricks
+      for (let dx = minX; dx <= maxX; dx++) {
+        const randStone = stoneTypes[Math.abs((dx + distanceCovered) % stoneTypes.length)];
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${randStone}`);
+      }
+      // Walls: Stone Bricks with Stripped Dark Oak Log arches every 4 blocks
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = isInterval4 ? "stripped_dark_oak_log" : stoneTypes[(dy + distanceCovered) % stoneTypes.length];
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      // Ceiling: Arches & Hanging Lanterns
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = isInterval4 ? "stripped_dark_oak_log" : "stone_bricks";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+        if (dx === 0 && isInterval6) {
+          const chainPos = ceilPos.offset(0, -1, 0);
+          const lanternPos = ceilPos.offset(0, -2, 0);
+          this.bot.chat(`/setblock ${chainPos.x} ${chainPos.y} ${chainPos.z} chain`);
+          this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
+        }
+      }
+      await this.sleep(30);
+      return;
+    }
+
+    // ── 3. GLASS AQUARIUM & OCEAN DOME ─────────────────────────────────────
+    if (t.includes("aquarium") || t.includes("ocean") || t.includes("glass")) {
+      // Floor: Prismarine Bricks with Sea Lantern borders
+      for (let dx = minX; dx <= maxX; dx++) {
+        const floorBlock = (dx === minX || dx === maxX) ? "sea_lantern" : "prismarine_bricks";
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${floorBlock}`);
+      }
+      // Walls & Ceiling: Clear Glass with Dark Prismarine ribs
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = isInterval6 ? "dark_prismarine" : "glass";
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = isInterval6 ? "dark_prismarine" : "glass";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+      }
+      await this.sleep(30);
+      return;
+    }
+
+    // ── 4. CYBERPUNK / SCI-FI NEON CORRIDOR ────────────────────────────────
+    if (t.includes("cyber") || t.includes("neon") || t.includes("scifi")) {
+      // Floor: Obsidian with Cyan Stained Glass runners over Sea Lanterns
+      for (let dx = minX; dx <= maxX; dx++) {
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        if (dx === 0) {
+          const underPos = floorPos.offset(0, -1, 0);
+          this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} sea_lantern`);
+          this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} cyan_stained_glass`);
+        } else {
+          this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} obsidian`);
+        }
+      }
+      // Walls: Black Concrete & Polished Basalt
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = isInterval4 ? "polished_basalt" : "black_concrete";
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      // Ceiling: Smooth Quartz with Magenta Stained Glass
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = (dx === 0 && isInterval6) ? "magenta_stained_glass" : "smooth_quartz";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+      }
+      await this.sleep(30);
+      return;
+    }
+
+    // ── 5. WESTERN MINESHAFT THEME ─────────────────────────────────────────
+    if (t.includes("mine") || t.includes("shaft")) {
+      // Floor: Coarse Dirt, Cobblestone & Rail
+      for (let dx = minX; dx <= maxX; dx++) {
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        const floorBlock = dx % 2 === 0 ? "cobblestone" : "coarse_dirt";
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${floorBlock}`);
+        if (dx === 0) {
+          const railPos = nextFoot.offset(0, minY, 0);
+          this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} rail`);
+        }
+      }
+      // Walls: Oak Planks with Oak Log pillars every 4 blocks
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = isInterval4 ? "oak_log" : "oak_planks";
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      // Ceiling: Oak Log Arch & Lantern
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = isInterval4 ? "oak_log" : "oak_planks";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+        if (dx === 0 && isInterval6) {
+          const lanternPos = ceilPos.offset(0, -1, 0);
+          this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
+        }
+      }
+      await this.sleep(30);
+      return;
+    }
+
+    // ── 6. NETHER FORTRESS VAULT THEME ─────────────────────────────────────
+    if (t.includes("nether") || t.includes("vault")) {
+      // Floor: Polished Blackstone Bricks
+      for (let dx = minX; dx <= maxX; dx++) {
+        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} polished_blackstone_bricks`);
+      }
+      // Walls: Crying Obsidian & Smooth Basalt
+      for (let dy = minY; dy <= maxY; dy++) {
+        const wallBlock = isInterval4 ? "crying_obsidian" : "smooth_basalt";
+        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
+        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
+        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
+        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
+      }
+      // Ceiling: Polished Blackstone with Soul Lanterns / Shroomlights
+      for (let dx = minX; dx <= maxX; dx++) {
+        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
+        const ceilBlock = (dx === 0 && isInterval6) ? "shroomlight" : "polished_blackstone_bricks";
+        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
+      }
+      await this.sleep(30);
+      return;
+    }
+
+    // ── DEFAULT HIGHWAY BUILDER ───────────────────────────────────────────
+    for (let dx = minX; dx <= maxX; dx++) {
+      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
+      this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} stone_bricks`);
+    }
     for (let dy = minY; dy <= maxY; dy++) {
-      if (this.shouldStop) break;
       const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
       const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-
-      const leftBlk = this.bot.blockAt(leftPos);
-      if (!leftBlk || leftBlk.name !== "stone_bricks") {
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} stone_bricks`);
-        await this.sleep(20);
-      }
-
-      const rightBlk = this.bot.blockAt(rightPos);
-      if (!rightBlk || rightBlk.name !== "stone_bricks") {
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} stone_bricks`);
-        await this.sleep(20);
-      }
+      this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} stone_bricks`);
+      this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} stone_bricks`);
     }
-
-    // 3. Ceiling: Smooth Stone (at maxY + 1) with embedded Sea Lanterns
     for (let dx = minX; dx <= maxX; dx++) {
-      if (this.shouldStop) break;
       const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-      const ceilBlk = this.bot.blockAt(ceilPos);
-
-      // Center ceiling light
-      if (isLightInterval && dx === 0) {
-        if (!ceilBlk || ceilBlk.name !== "sea_lantern") {
-          this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} sea_lantern`);
-          await this.sleep(20);
-        }
-      } else {
-        if (!ceilBlk || ceilBlk.name !== "smooth_stone") {
-          this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} smooth_stone`);
-          await this.sleep(20);
-        }
-      }
+      const ceilBlock = (dx === 0 && isInterval6) ? "sea_lantern" : "smooth_stone";
+      this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
     }
+    await this.sleep(30);
+  }
+
+  /**
+   * Places Staircase Step (Downwards or Upwards) with Directional Orientation
+   */
+  async placeStairStep(stepPos, slope = "down", direction = "north", theme = "highway") {
+    let stairBlock = "stone_brick_stairs";
+    if (theme.includes("subway")) stairBlock = "deepslate_tile_stairs";
+    else if (theme.includes("castle")) stairBlock = "stone_brick_stairs";
+    else if (theme.includes("cyber")) stairBlock = "quartz_stairs";
+    else if (theme.includes("nether")) stairBlock = "polished_blackstone_brick_stairs";
+    else if (theme.includes("mine")) stairBlock = "oak_stairs";
+
+    const dirMap = { north: "south", south: "north", east: "west", west: "east" };
+    const facing = slope === "down" ? (dirMap[direction.toLowerCase()] || "south") : (direction.toLowerCase() || "north");
+    this.bot.chat(`/setblock ${stepPos.x} ${stepPos.y} ${stepPos.z} ${stairBlock}[facing=${facing}]`);
+    await this.sleep(30);
   }
 
   /**
@@ -600,10 +766,17 @@ class MinerManager {
         this.state = "MINING";
       }
 
-      // Execute Mining Step based on Strategy
-      if (strategy === "strip_mine" || strategy === "highway_builder" || strategy === "highway") {
+      // Execute Mining Step based on Strategy (Strip Mine, Staircase, or Architectural Structure Themes)
+      const isStructureTheme = strategy.includes("highway") || strategy.includes("subway") || strategy.includes("castle") || strategy.includes("aquarium") || strategy.includes("cyber") || strategy.includes("mine") || strategy.includes("nether");
+      const isStairs = strategy.includes("stairs") || slope === "down" || slope === "up";
+
+      if (strategy === "strip_mine" || isStructureTheme || isStairs) {
+        let dyOffset = 0;
+        if (strategy.includes("down") || slope === "down") dyOffset = -1;
+        else if (strategy.includes("up") || slope === "up") dyOffset = 1;
+
         const currentPos = this.bot.entity.position.floored();
-        const nextFoot = currentPos.plus(stepVec);
+        const nextFoot = currentPos.plus(stepVec).offset(0, dyOffset, 0);
 
         // Lateral Vector perpendicular to movement direction
         let lateralVec = new Vec3(1, 0, 0);
@@ -611,18 +784,22 @@ class MinerManager {
           lateralVec = new Vec3(0, 0, 1);
         }
 
-        // Determine slice bounds for 1x2, 3x3, 4x4, 5x5
+        // Determine slice bounds
         let minX = 0, maxX = 0, minY = 0, maxY = 1;
         if (size === "3x3") {
           minX = -1; maxX = 1; minY = 0; maxY = 2;
         } else if (size === "4x4") {
           minX = -1; maxX = 2; minY = 0; maxY = 3;
-        } else if (size === "5x5" || strategy.includes("highway")) {
+        } else if (size === "5x5" || isStructureTheme) {
           minX = -2; maxX = 2; minY = 0; maxY = 4;
         }
 
-        // Dig out full cross-section slice
-        for (let dy = maxY; dy >= minY; dy--) {
+        // Extra clearance overhead if climbing up stairs
+        const clearMaxY = dyOffset === 1 ? maxY + 1 : maxY;
+        const clearMinY = dyOffset === -1 ? minY - 1 : minY;
+
+        // Dig out cross-section slice
+        for (let dy = clearMaxY; dy >= clearMinY; dy--) {
           for (let dx = minX; dx <= maxX; dx++) {
             if (this.shouldStop) break;
             const currentMined = this.stats.totalBlocksMined - startBlocksMined;
@@ -652,28 +829,35 @@ class MinerManager {
           break;
         }
 
-        // Auto-Seal any lava or water breaches around the slice
-        await this.sealFluidHazards(nextFoot, minX, maxX, minY, maxY, lateralVec);
+        // 360-Degree Fluid Barrier: Auto-seal lava & water leaks around the slice
+        await this.sealFluidHazards(nextFoot, minX, maxX, clearMinY, clearMaxY, lateralVec);
 
-        // If Highway Builder mode, construct architectural lining (stone bricks, smooth stone, sea lanterns)
-        if (strategy.includes("highway")) {
-          await this.constructHighwaySlice(nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered);
+        // Place directional stairs if in staircase mode
+        if (dyOffset !== 0) {
+          await this.placeStairStep(nextFoot, dyOffset === -1 ? "down" : "up", direction, strategy);
+        }
+
+        // Construct Architectural Structure Theme (Subway, Castle, Aquarium, Cyberpunk, Mineshaft, Nether, Highway)
+        if (isStructureTheme) {
+          await this.constructThemeSlice(strategy, nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered, direction);
         } else {
-          // Standard Mining: Auto-bridge foundation & place torches
+          // Standard Mining: Auto-bridge 5x5 foundation & place torches
           await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
           if (distanceCovered % 8 === 0) {
             await this.placeTorch(this.bot.entity.position.floored());
           }
         }
 
-        // Step forward
+        // Step forward / climb / descend
         try {
           await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
           await this.bot.pathfinder.goto(new GoalNear(nextFoot.x, nextFoot.y, nextFoot.z, 0));
         } catch (_) {
           this.bot.setControlState("forward", true);
+          if (dyOffset === 1) this.bot.setControlState("jump", true);
           await this.sleep(300);
           this.bot.setControlState("forward", false);
+          this.bot.setControlState("jump", false);
         }
 
         distanceCovered++;
