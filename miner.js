@@ -83,6 +83,14 @@ class MinerManager {
   }
 
   /**
+   * Universal Vacuum Magnet: Teleports all dropped items within radius directly onto bot to guarantee 100% loot collection
+   */
+  async vacuumLoot(radius = 12) {
+    if (!this.bot || !this.bot.username) return;
+    this.bot.chat(`/tp @e[type=item,distance=..${radius}] ${this.bot.username}`);
+  }
+
+  /**
    * Stop current mining operation and mission
    */
   stop(reason = "User requested stop") {
@@ -252,6 +260,7 @@ class MinerManager {
           this.collectedDrops[dropItem] = (this.collectedDrops[dropItem] || 0) + 1;
         }
 
+        this.vacuumLoot(6);
         await this.sleep(40);
         return true;
       }
@@ -691,10 +700,12 @@ class MinerManager {
           }
 
           this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
+          this.vacuumLoot(10);
           await this.sleep(fillSleep);
 
           const currentMined = this.stats.totalBlocksMined - startBlocksMined;
           if (durationMode === "distance" && currentMined >= targetBlocks) {
+            this.vacuumLoot(16);
             this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMined} blocks mined)! Returning to chest to deposit...`);
             break;
           }
@@ -742,6 +753,7 @@ class MinerManager {
             break;
           }
           await this.sleep(syncSleep);
+          this.vacuumLoot(12);
 
           if (distanceCovered === 0 || distanceCovered % 10 === 0) {
             this.bot.chat(`[${this.bot.username}] ⛏️ Step #${distanceCovered + 1} (${strategy}) at (${nextFoot.x}, ${nextFoot.y}, ${nextFoot.z})`);
@@ -760,6 +772,8 @@ class MinerManager {
 
     // Step 3: Final Return & Deposit All Mined Items
     addLog("[Mission] Mission complete. Returning to chest to sort and deposit all items...", "Miner");
+    this.vacuumLoot(16);
+    await this.sleep(200);
     await this.depositAndSortAllItems(chestCoords);
 
     this.state = "IDLE";
