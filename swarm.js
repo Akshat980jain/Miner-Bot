@@ -256,26 +256,46 @@ class SwarmManager {
   }
 
   /**
-   * Execute an individual command on a specific bot by ID (1..10) or Name (Miner_Bot_2)
+   * Execute an individual command on ANY bot (1..10 or Miner_Bot / Miner_Bot_10) with Auto-Spawn on Demand
    */
-  executeBotCommand(targetIdentifier, sender, commandLine) {
+  async executeBotCommand(targetIdentifier, sender, commandLine) {
     let targetEntry = null;
-    const numId = parseInt(targetIdentifier, 10);
-    if (!isNaN(numId) && this.bots.has(numId)) {
-      targetEntry = this.bots.get(numId);
-    } else {
-      const lower = targetIdentifier.toLowerCase();
-      for (const entry of this.bots.values()) {
-        if (entry.username.toLowerCase() === lower || entry.username.toLowerCase().replace(/_/g, "") === lower.replace(/_/g, "")) {
-          targetEntry = entry;
-          break;
-        }
+    let targetId = null;
+
+    // Resolve target bot ID (1..10)
+    let parsedNum = parseInt(targetIdentifier, 10);
+    if (isNaN(parsedNum)) {
+      const match = targetIdentifier.match(/(\d+)/);
+      if (match) {
+        parsedNum = parseInt(match[1], 10);
+      } else if (targetIdentifier.toLowerCase().includes("miner_bot") || targetIdentifier.toLowerCase() === "minerbot") {
+        parsedNum = 1;
+      }
+    }
+
+    if (!isNaN(parsedNum) && parsedNum >= 1 && parsedNum <= 10) {
+      targetId = parsedNum;
+      if (this.bots.has(targetId)) {
+        targetEntry = this.bots.get(targetId);
+      }
+    }
+
+    // Auto-Spawn on demand if bot is offline or not yet created
+    if ((!targetEntry || !targetEntry.connected) && targetId && targetId >= 2) {
+      if (this.bots.has(1) && this.bots.get(1).bot) {
+        this.bots.get(1).bot.chat(`🤖 Auto-spawning Miner_Bot_${targetId} on demand to execute mission...`);
+      }
+      try {
+        await this.spawnBotAndWait(targetId);
+        targetEntry = this.bots.get(targetId);
+      } catch (err) {
+        this.addLog(`[Swarm] Auto-spawn for Bot ${targetId} failed: ${err.message}`, "Swarm");
       }
     }
 
     if (!targetEntry || !targetEntry.connected) {
       if (this.bots.has(1) && this.bots.get(1).bot) {
-        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is reconnecting...`);
+        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is not ready yet. Please retry in 5s.`);
       }
       return false;
     }

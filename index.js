@@ -707,6 +707,14 @@ function createMinerBot() {
             bot.chat(`/op Miner_Bot_${i}`);
           }, 2000 + (i * 400));
         }
+
+        // Pre-spawn and maintain full fleet of Bots (1 to 10)
+        if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+        swarm.registerPrimaryBot(bot, miner, safety);
+        setTimeout(() => {
+          addLog("[Fleet] Pre-spawning full 10-bot swarm fleet into world...", "Swarm");
+          swarm.spawnSwarm(10);
+        }, 5000);
       }, 2500);
 
       bot.on("game", () => {
@@ -797,7 +805,7 @@ function sendInteractiveMenu(username) {
   }
 }
 
-function handleChatCommands(sender, message) {
+async function handleChatCommands(sender, message) {
   const parts = message.trim().split(/\s+/);
   const trigger = parts[0].toLowerCase();
   const player = bot.players[sender];
@@ -1096,11 +1104,11 @@ function handleChatCommands(sender, message) {
       const targetIdentifier = parts[1];
       const subCommand = parts.slice(2).join(" ");
       if (targetIdentifier.toLowerCase() === "miner_bot" || targetIdentifier === "1" || targetIdentifier.toLowerCase() === "minerbot") {
-        handleChatCommands(sender, subCommand);
+        await handleChatCommands(sender, subCommand);
       } else {
         if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
         swarm.registerPrimaryBot(bot, miner, safety);
-        swarm.executeBotCommand(targetIdentifier, sender, subCommand);
+        await swarm.executeBotCommand(targetIdentifier, sender, subCommand);
       }
       break;
     }
