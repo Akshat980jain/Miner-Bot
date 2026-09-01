@@ -323,6 +323,9 @@ class SwarmManager {
         strategy,
         direction,
         size
+      }).catch((err) => {
+        console.error(`[SWARM FATAL] ${targetEntry.username}:`, err);
+        bot.chat(`❌ [${targetEntry.username}] Mission crashed: ${err.message}`);
       });
       return true;
     } else if (trigger === "!stop" || trigger === "!abort") {

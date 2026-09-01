@@ -953,6 +953,9 @@ async function handleChatCommands(sender, message) {
         strategy,
         direction,
         size
+      }).catch((err) => {
+        console.error("[MISSION FATAL]", err);
+        bot.chat(`❌ Mission crashed: ${err.message}`);
       });
       break;
     }

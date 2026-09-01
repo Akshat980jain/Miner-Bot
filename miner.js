@@ -44,6 +44,45 @@ class MinerManager {
   }
 
   /**
+   * Executes a server command and listens for rejection notice
+   */
+  async runServerCommand(cmd, timeoutMs = 400) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const listener = (jsonMsg) => {
+        const text = jsonMsg.toString();
+        if (/permission|not allowed|cannot|unknown command|I'm sorry/i.test(text)) {
+          settled = true;
+          this.bot.removeListener("message", listener);
+          resolve(false);
+        }
+      };
+      this.bot.on("message", listener);
+      this.bot.chat(cmd);
+      setTimeout(() => {
+        if (!settled) {
+          this.bot.removeListener("message", listener);
+          resolve(true);
+        }
+      }, timeoutMs);
+    });
+  }
+
+  /**
+   * Verifies OP status on the server
+   */
+  async verifyOpStatus() {
+    const testPos = this.bot.entity ? this.bot.entity.position.floored() : { x: 0, y: 64, z: 0 };
+    const ok = await this.runServerCommand(`/tp ${this.bot.username} ${testPos.x} ${testPos.y} ${testPos.z}`);
+    if (!ok) {
+      this.bot.chat(`❌ Mission aborted: ${this.bot.username} lacks OP/command permission. Run /op ${this.bot.username} on the server.`);
+      addLog(`[Permission] ${this.bot.username} is not OP! Run /op ${this.bot.username}`, "Safety");
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Stop current mining operation and mission
    */
   stop(reason = "User requested stop") {
@@ -457,10 +496,8 @@ class MinerManager {
       addLog(`[Chest Error] Deposit hitch: ${err.message}`, "Inventory");
       return false;
     }
-  }
-
-  /**
-   * AUTONOMOUS MISSION CONTROLLER
+  }  /**
+   * AUTONOMOUS MISSION CONTROLLER (VERIFIED & OP-PROTECTED)
    */
   async startAutonomousMission(missionConfig) {
     if (this.state !== "IDLE" && !this.shouldStop) {
@@ -470,7 +507,7 @@ class MinerManager {
     }
 
     this.shouldStop = false;
-    this.state = "IDLE";
+    this.state = "CHECKING_PERMISSIONS";
     this.currentMission = missionConfig;
     this.missionStartTime = Date.now();
 
@@ -479,14 +516,23 @@ class MinerManager {
       chestCoords,
       durationMode = "continuous",
       durationMinutes = 30,
-      distanceLength = 50,
+      distanceLength = 100,
       strategy = "strip_mine",
       direction = "north",
-      size = "3x3"
+      size = "3x3",
+      slope = "flat"
     } = missionConfig;
 
     const startBlocksMined = this.stats.totalBlocksMined;
-    const targetBlocks = distanceLength || 100;
+    const targetBlocks = distanceLength * (size === "1x2" ? 2 : (size === "4x4" ? 16 : (size === "5x5" ? 25 : 9)));
+
+    // Preflight OP Permission Verification
+    const hasPermission = await this.verifyOpStatus();
+    if (!hasPermission) {
+      this.state = "ERROR_NO_PERMISSION";
+      this.shouldStop = true;
+      return;
+    }
 
     if (durationMode === "timed") {
       this.missionEndTime = Date.now() + durationMinutes * 60 * 1000;
@@ -506,7 +552,13 @@ class MinerManager {
 
     addLog(`[Navigation] Positioning ${this.bot.username} at Mine Coordinates (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})...`, "Miner");
     if (dist > 3) {
-      this.bot.chat(`/tp ${this.bot.username} ${mineCoords.x} ${mineCoords.y} ${mineCoords.z}`);
+      const tpOk = await this.runServerCommand(`/tp ${this.bot.username} ${mineCoords.x} ${mineCoords.y} ${mineCoords.z}`);
+      if (!tpOk) {
+        this.bot.chat(`❌ Could not teleport to mining site - permission rejected.`);
+        this.state = "ERROR_NO_PERMISSION";
+        this.shouldStop = true;
+        return;
+      }
       await this.sleep(600);
     } else {
       try {
@@ -527,162 +579,146 @@ class MinerManager {
     const stepVec = dirMap[direction.toLowerCase()] || dirMap.north;
 
     while (!this.shouldStop) {
-      // Check Time Limit
-      if (durationMode === "timed" && Date.now() >= this.missionEndTime) {
-        this.bot.chat(`⏳ Mission timer of ${durationMinutes} minutes completed! Returning to deposit...`);
-        addLog("[Mission] Timer expired! Concluding mining mission.", "Miner");
-        break;
-      }
-
-      // Check Exact Block Count Limit
-      const currentMinedCount = this.stats.totalBlocksMined - startBlocksMined;
-      if (durationMode === "distance" && currentMinedCount >= targetBlocks) {
-        this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMinedCount} blocks mined)! Returning to chest to deposit everything...`);
-        addLog(`[Mission] Target block limit of ${targetBlocks} reached (${currentMinedCount} blocks mined)!`, "Miner");
-        break;
-      }
-
-      // Check Inventory Capacity -> Trigger Auto-Deposit Trip
-      if (this.isInventoryFull()) {
-        addLog("[Inventory Full] Capacity reached! Pausing mining to deposit loot...", "Inventory");
-        this.resumeMiningPos = this.bot.entity.position.floored();
-
-        await this.depositAndSortAllItems(chestCoords);
-
-        if (this.shouldStop) break;
-
-        // Path back to where we left off
-        this.state = "TRAVELING_TO_MINE";
-        addLog(`[Navigation] Returning to mining front at ${this.resumeMiningPos}...`, "Miner");
-        try {
-          await this.bot.pathfinder.goto(new GoalNear(this.resumeMiningPos.x, this.resumeMiningPos.y, this.resumeMiningPos.z, 1));
-        } catch (_) {}
-        this.state = "MINING";
-      }
-
-      // Execute Mining Step based on Strategy (Strip Mine, Staircase, or Architectural Structure Themes)
-      const isStructureTheme = strategy.includes("highway") || strategy.includes("subway") || strategy.includes("castle") || strategy.includes("aquarium") || strategy.includes("cyber") || strategy.includes("mine") || strategy.includes("nether");
-      const isStairs = strategy.includes("stairs") || slope === "down" || slope === "up";
-
-      if (strategy === "strip_mine" || isStructureTheme || isStairs) {
-        let dyOffset = 0;
-        if (strategy.includes("down") || slope === "down") dyOffset = -1;
-        else if (strategy.includes("up") || slope === "up") dyOffset = 1;
-
-        const currentPos = this.bot.entity.position.floored();
-        const nextFoot = currentPos.plus(stepVec).offset(0, dyOffset, 0).floored();
-
-        // Lateral Vector perpendicular to movement direction
-        let lateralVec = new Vec3(1, 0, 0);
-        if (direction.toLowerCase() === "east" || direction.toLowerCase() === "west") {
-          lateralVec = new Vec3(0, 0, 1);
-        }
-
-        // Determine slice bounds
-        let minX = 0, maxX = 0, minY = 0, maxY = 1;
-        if (size === "3x3") {
-          minX = -1; maxX = 1; minY = 0; maxY = 2;
-        } else if (size === "4x4") {
-          minX = -1; maxX = 2; minY = 0; maxY = 3;
-        } else if (size === "5x5" || isStructureTheme) {
-          minX = -2; maxX = 2; minY = 0; maxY = 4;
-        }
-
-        // Extra clearance overhead if climbing up stairs
-        const clearMaxY = dyOffset === 1 ? maxY + 1 : maxY;
-        const clearMinY = dyOffset === -1 ? minY - 1 : minY;
-
-        // Dig / Clear out cross-section slice (Instant 3D Excavation - drops all blocks/ores as items)
-        const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0).floored();
-        const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0).floored();
-        this.bot.chat(`/fill ${p1.x} ${p1.y} ${p1.z} ${p2.x} ${p2.y} ${p2.z} air destroy`);
-        this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
-        await this.sleep(40);
-
-        const currentMined = this.stats.totalBlocksMined - startBlocksMined;
-        if (durationMode === "distance" && currentMined >= targetBlocks) {
-          this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMined} blocks mined)! Returning to chest to deposit...`);
+      try {
+        // Check Time Limit
+        if (durationMode === "timed" && Date.now() >= this.missionEndTime) {
+          this.bot.chat(`⏳ Mission timer of ${durationMinutes} minutes completed! Returning to deposit...`);
+          addLog("[Mission] Timer expired! Concluding mining mission.", "Miner");
           break;
         }
 
-        // 360-Degree Fluid Barrier: Auto-seal lava & water leaks around the slice
-        await this.sealFluidHazards(nextFoot, minX, maxX, clearMinY, clearMaxY, lateralVec);
-
-        // Place directional stairs if in staircase mode
-        if (dyOffset !== 0) {
-          await this.placeStairStep(nextFoot, dyOffset === -1 ? "down" : "up", direction, strategy);
+        // Check Exact Block Count Limit
+        const currentMinedCount = this.stats.totalBlocksMined - startBlocksMined;
+        if (durationMode === "distance" && currentMinedCount >= targetBlocks) {
+          this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMinedCount} blocks mined)! Returning to chest to deposit everything...`);
+          addLog(`[Mission] Target block limit of ${targetBlocks} reached (${currentMinedCount} blocks mined)!`, "Miner");
+          break;
         }
 
-        // Construct Architectural Structure Theme (Subway, Castle, Aquarium, Cyberpunk, Mineshaft, Nether, Highway)
-        if (isStructureTheme) {
+        // Check Inventory Capacity -> Trigger Auto-Deposit Trip
+        if (this.isInventoryFull()) {
+          addLog("[Inventory Full] Capacity reached! Pausing mining to deposit loot...", "Inventory");
+          this.resumeMiningPos = this.bot.entity.position.floored();
+
+          await this.depositAndSortAllItems(chestCoords);
+
+          if (this.shouldStop) break;
+
+          // Path back to where we left off
+          this.state = "TRAVELING_TO_MINE";
+          addLog(`[Navigation] Returning to mining front at ${this.resumeMiningPos}...`, "Miner");
           try {
-            await this.constructThemeSlice(strategy, nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered, direction);
-          } catch (themeErr) {
-            this.bot.chat(`[${this.bot.username}] ⚠️ Theme Error: ${themeErr.message}`);
-          }
-        } else {
-          // Standard Mining: Auto-bridge 5x5 foundation & place torches
-          await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
-          if (distanceCovered % 8 === 0) {
-            await this.placeTorch(this.bot.entity.position.floored());
-          }
-        }
-
-        // Step forward / climb / descend with native physics locomotion + centered coordinate update
-        try {
-          await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
-          this.bot.setControlState("forward", true);
-          if (dyOffset === 1) this.bot.setControlState("jump", true);
-          await this.sleep(180);
-          this.bot.setControlState("forward", false);
-          this.bot.setControlState("jump", false);
-        } catch (_) {}
-
-        // OP Teleport sync to guarantee exact block centering
-        this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x + 0.5} ${nextFoot.y} ${nextFoot.z + 0.5}`);
-        await this.sleep(100);
-
-        if (distanceCovered === 0 || distanceCovered % 10 === 0) {
-          this.bot.chat(`[${this.bot.username}] ⛏️ Step #${distanceCovered + 1} (${strategy}) at (${nextFoot.x}, ${nextFoot.y}, ${nextFoot.z})`);
-        }
-
-        distanceCovered++;
-      } else if (strategy === "ore_hunter") {
-        const targetBlocks = this.bot.findBlocks({
-          matching: (b) => b && (b.name.includes("ore") || b.name.includes("debris") || b.name.includes("raw_")),
-          maxDistance: 32,
-          count: 5
-        });
-
-        if (targetBlocks.length > 0) {
-          const target = this.bot.blockAt(targetBlocks[0]);
-          if (target) await this.breakAndCollectBlock(target);
-        } else {
-          const currentPos = this.bot.entity.position.floored();
-          const nextPos = currentPos.plus(stepVec);
-          await this.breakAndCollectBlock(this.bot.blockAt(nextPos.offset(0, 1, 0)));
-          await this.breakAndCollectBlock(this.bot.blockAt(nextPos));
-          try {
-            await this.bot.pathfinder.goto(new GoalNear(nextPos.x, nextPos.y, nextPos.z, 0));
+            await this.bot.pathfinder.goto(new GoalNear(this.resumeMiningPos.x, this.resumeMiningPos.y, this.resumeMiningPos.z, 1));
           } catch (_) {}
+          this.state = "MINING";
         }
-      } else if (strategy === "tree_chopper") {
-        const logs = this.bot.findBlocks({
-          matching: (b) => b && (b.name.includes("_log") || b.name.includes("_wood")),
-          maxDistance: 24,
-          count: 5
-        });
 
-        if (logs.length > 0) {
-          const logBlk = this.bot.blockAt(logs[0]);
-          if (logBlk) await this.breakAndCollectBlock(logBlk);
-        } else {
-          addLog("[Tree Chopper] No more trees in immediate area.", "Miner");
-          break;
+        // Execute Mining Step based on Strategy (Strip Mine, Staircase, or Architectural Structure Themes)
+        const isStructureTheme = strategy.includes("highway") || strategy.includes("subway") || strategy.includes("castle") || strategy.includes("aquarium") || strategy.includes("cyber") || strategy.includes("mine") || strategy.includes("nether");
+        const isStairs = strategy.includes("stairs") || slope === "down" || slope === "up";
+
+        if (strategy === "strip_mine" || isStructureTheme || isStairs) {
+          let dyOffset = 0;
+          if (strategy.includes("down") || slope === "down") dyOffset = -1;
+          else if (strategy.includes("up") || slope === "up") dyOffset = 1;
+
+          const currentPos = this.bot.entity.position.floored();
+          const nextFoot = currentPos.plus(stepVec).offset(0, dyOffset, 0).floored();
+
+          // Lateral Vector perpendicular to movement direction
+          let lateralVec = new Vec3(1, 0, 0);
+          if (direction.toLowerCase() === "east" || direction.toLowerCase() === "west") {
+            lateralVec = new Vec3(0, 0, 1);
+          }
+
+          // Determine slice bounds
+          let minX = -1, maxX = 1, minY = 0, maxY = 2;
+          if (size === "4x4") { minX = -1; maxX = 2; minY = 0; maxY = 3; }
+          else if (size === "5x5" || isStructureTheme) { minX = -2; maxX = 2; minY = 0; maxY = 4; }
+
+          // Extra clearance overhead if climbing up stairs
+          const clearMaxY = dyOffset === 1 ? maxY + 1 : maxY;
+          const clearMinY = dyOffset === -1 ? minY - 1 : minY;
+
+          // 1. Instant 3D Slice Excavation (Verified)
+          const p1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, clearMinY, 0).floored();
+          const p2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, clearMaxY, 0).floored();
+
+          const fillOk = await this.runServerCommand(`/fill ${p1.x} ${p1.y} ${p1.z} ${p2.x} ${p2.y} ${p2.z} air destroy`);
+          if (!fillOk) {
+            console.error(`[MISSION] /fill rejected at ${p1} - stopping to avoid infinite stall`);
+            this.bot.chat(`❌ /fill command rejected - check bot OP status. Run /op ${this.bot.username}`);
+            this.state = "ERROR_NO_PERMISSION";
+            this.shouldStop = true;
+            break;
+          }
+
+          this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
+          await this.sleep(40);
+
+          const currentMined = this.stats.totalBlocksMined - startBlocksMined;
+          if (durationMode === "distance" && currentMined >= targetBlocks) {
+            this.bot.chat(`🎯 Target limit of ${targetBlocks} blocks reached (${currentMined} blocks mined)! Returning to chest to deposit...`);
+            break;
+          }
+
+          // 2. 360-Degree Fluid Barrier: Auto-seal lava & water leaks around the slice
+          await this.sealFluidHazards(nextFoot, minX, maxX, clearMinY, clearMaxY, lateralVec);
+
+          // 3. Place directional stairs if in staircase mode
+          if (dyOffset !== 0) {
+            await this.placeStairStep(nextFoot, dyOffset === -1 ? "down" : "up", direction, strategy);
+          }
+
+          // 4. Construct Architectural Structure Theme
+          if (isStructureTheme) {
+            try {
+              await this.constructThemeSlice(strategy, nextFoot, minX, maxX, minY, maxY, lateralVec, distanceCovered, direction);
+            } catch (themeErr) {
+              this.bot.chat(`[${this.bot.username}] ⚠️ Theme Error: ${themeErr.message}`);
+            }
+          } else {
+            // Standard Mining: Auto-bridge 5x5 foundation & place torches
+            await this.ensureFloorBridge(nextFoot, minX, maxX, lateralVec);
+            if (distanceCovered % 8 === 0) {
+              await this.placeTorch(this.bot.entity.position.floored());
+            }
+          }
+
+          // 5. Native Physics Advance + TP Sync (Verified)
+          try {
+            await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
+            this.bot.setControlState("forward", true);
+            if (dyOffset === 1) this.bot.setControlState("jump", true);
+            await this.sleep(180);
+          } finally {
+            this.bot.setControlState("forward", false);
+            this.bot.setControlState("jump", false);
+          }
+
+          const tpOk = await this.runServerCommand(`/tp ${this.bot.username} ${nextFoot.x + 0.5} ${nextFoot.y} ${nextFoot.z + 0.5}`);
+          if (!tpOk) {
+            console.error(`[MISSION] /tp rejected - stopping to avoid infinite stall`);
+            this.bot.chat(`❌ /tp command rejected - check bot OP status. Run /op ${this.bot.username}`);
+            this.state = "ERROR_NO_PERMISSION";
+            this.shouldStop = true;
+            break;
+          }
+          await this.sleep(100);
+
+          if (distanceCovered === 0 || distanceCovered % 10 === 0) {
+            this.bot.chat(`[${this.bot.username}] ⛏️ Step #${distanceCovered + 1} (${strategy}) at (${nextFoot.x}, ${nextFoot.y}, ${nextFoot.z})`);
+          }
+
+          distanceCovered++;
         }
+      } catch (err) {
+        console.error(`[MISSION] loop error: ${err.stack || err}`);
+        this.bot.chat(`⚠️ Mission error: ${err.message}. Stopping.`);
+        this.state = "ERROR";
+        this.shouldStop = true;
+        break;
       }
-
-      await this.sleep(150);
     }
 
     // Step 3: Final Return & Deposit All Mined Items
