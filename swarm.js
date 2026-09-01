@@ -313,7 +313,9 @@ class SwarmManager {
         durationMinutes = parseInt(durParam.replace("time:", ""), 10) || 30;
       }
 
-      bot.chat(`🚀 [${targetEntry.username}] Starting ${size} mission at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
+      const speedParam = parts.find((p) => p.toLowerCase().startsWith("speed:"))?.replace(/speed:/i, "") || "1x";
+
+      bot.chat(`🚀 [${targetEntry.username}] Starting ${size} mission (⚡Speed: ${speedParam.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
@@ -322,7 +324,8 @@ class SwarmManager {
         distanceLength,
         strategy,
         direction,
-        size
+        size,
+        speed: speedParam
       }).catch((err) => {
         console.error(`[SWARM FATAL] ${targetEntry.username}:`, err);
         bot.chat(`❌ [${targetEntry.username}] Mission crashed: ${err.message}`);
@@ -348,6 +351,26 @@ class SwarmManager {
     }
 
     return false;
+  }
+
+  /**
+   * Universal Stop All Active Fleet Bots
+   */
+  stopAllBots(sender = "Player") {
+    let stoppedCount = 0;
+    for (const [id, entry] of this.bots.entries()) {
+      if (entry && entry.miner) {
+        try {
+          entry.miner.stop(`Universal stop by ${sender}`);
+          stoppedCount++;
+        } catch (_) {}
+      }
+    }
+
+    if (this.primaryBot && this.primaryBot.chat) {
+      this.primaryBot.chat(`🛑 [Fleet Manager] Stopped all ${stoppedCount} fleet bots.`);
+    }
+    this.addLog(`[Swarm] Universal Stop triggered by ${sender}. ${stoppedCount} bots stopped.`, "Swarm");
   }
 
   /**

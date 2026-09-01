@@ -942,8 +942,11 @@ async function handleChatCommands(sender, message) {
       inGameMissionConfig.durationMode = durationMode;
       inGameMissionConfig.durationMinutes = durationMinutes;
 
+      const speedParam = parts.find((p) => p.toLowerCase().startsWith("speed:"))?.replace(/speed:/i, "") || inGameMissionConfig.speed || "1x";
+      inGameMissionConfig.speed = speedParam;
+
       const durLabel = durationMode === "distance" ? `${distanceLength} Blocks` : (durationMode === "timed" ? `${durationMinutes} Mins` : "24/7 Infinite");
-      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}, ${durLabel}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
+      bot.chat(`🚀 Starting ${size} ${strategy} (${direction.toUpperCase()}, ${durLabel}, ⚡Speed: ${speedParam.toUpperCase()}) at (${mineCoords.x}, ${mineCoords.y}, ${mineCoords.z}) | Chest: (${chestCoords.x}, ${chestCoords.y}, ${chestCoords.z})`);
       miner.startAutonomousMission({
         mineCoords,
         chestCoords,
@@ -952,11 +955,28 @@ async function handleChatCommands(sender, message) {
         distanceLength,
         strategy,
         direction,
-        size
+        size,
+        speed: speedParam
       }).catch((err) => {
         console.error("[MISSION FATAL]", err);
         bot.chat(`❌ Mission crashed: ${err.message}`);
       });
+      break;
+    }
+
+    case "!speed": {
+      const spd = (parts[1] || "1x").toLowerCase();
+      inGameMissionConfig.speed = spd;
+      bot.chat(`⚡ Miner Bot Speed Multiplier set to: ${spd.toUpperCase()} (1x, 2x, 5x, MAX)`);
+      break;
+    }
+
+    case "!stopall":
+    case "!haltall":
+    case "!stopfleet": {
+      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
+      swarm.registerPrimaryBot(bot, miner, safety);
+      swarm.stopAllBots(sender);
       break;
     }
 

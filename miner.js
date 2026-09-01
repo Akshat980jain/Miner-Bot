@@ -520,11 +520,31 @@ class MinerManager {
       strategy = "strip_mine",
       direction = "north",
       size = "3x3",
-      slope = "flat"
+      slope = "flat",
+      speed = "1x"
     } = missionConfig;
 
     const startBlocksMined = this.stats.totalBlocksMined;
     const targetBlocks = distanceLength * (size === "1x2" ? 2 : (size === "4x4" ? 16 : (size === "5x5" ? 25 : 9)));
+
+    // Speed Multiplier Delays
+    const speedMode = (speed || "1x").toLowerCase();
+    let fillSleep = 40;
+    let walkSleep = 180;
+    let syncSleep = 100;
+    if (speedMode === "2x" || speedMode === "fast") {
+      fillSleep = 20;
+      walkSleep = 80;
+      syncSleep = 50;
+    } else if (speedMode === "5x" || speedMode === "turbo") {
+      fillSleep = 10;
+      walkSleep = 30;
+      syncSleep = 20;
+    } else if (speedMode === "max" || speedMode === "instant") {
+      fillSleep = 5;
+      walkSleep = 10;
+      syncSleep = 10;
+    }
 
     // Preflight OP Permission Verification
     const hasPermission = await this.verifyOpStatus();
@@ -654,7 +674,7 @@ class MinerManager {
           }
 
           this.stats.totalBlocksMined += ((maxX - minX + 1) * (clearMaxY - clearMinY + 1));
-          await this.sleep(40);
+          await this.sleep(fillSleep);
 
           const currentMined = this.stats.totalBlocksMined - startBlocksMined;
           if (durationMode === "distance" && currentMined >= targetBlocks) {
@@ -690,7 +710,7 @@ class MinerManager {
             await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
             this.bot.setControlState("forward", true);
             if (dyOffset === 1) this.bot.setControlState("jump", true);
-            await this.sleep(180);
+            await this.sleep(walkSleep);
           } finally {
             this.bot.setControlState("forward", false);
             this.bot.setControlState("jump", false);
@@ -704,7 +724,7 @@ class MinerManager {
             this.shouldStop = true;
             break;
           }
-          await this.sleep(100);
+          await this.sleep(syncSleep);
 
           if (distanceCovered === 0 || distanceCovered % 10 === 0) {
             this.bot.chat(`[${this.bot.username}] ⛏️ Step #${distanceCovered + 1} (${strategy}) at (${nextFoot.x}, ${nextFoot.y}, ${nextFoot.z})`);
