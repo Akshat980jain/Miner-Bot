@@ -288,210 +288,123 @@ class MinerManager {
   }
 
   /**
-   * Modular Architectural Structure Builder (6 Themes)
+   * Modular Architectural Structure Builder (6 Themes) using fast /fill & minimal command footprint
    */
   async constructThemeSlice(theme, nextFoot, minX = -2, maxX = 2, minY = 0, maxY = 4, lateralVec = new Vec3(1, 0, 0), distanceCovered = 0, direction = "north") {
     const t = (theme || "highway").toLowerCase();
     const isInterval4 = (distanceCovered % 4 === 0);
     const isInterval6 = (distanceCovered % 6 === 0);
 
-    // ── 1. SUBWAY & RAILWAY THEME ──────────────────────────────────────────
+    const f1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, minY - 1, 0);
+    const f2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, minY - 1, 0);
+    const lw1 = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, minY, 0);
+    const lw2 = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, maxY, 0);
+    const rw1 = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, minY, 0);
+    const rw2 = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, maxY, 0);
+    const c1 = nextFoot.plus(lateralVec.scaled(minX)).offset(0, maxY + 1, 0);
+    const c2 = nextFoot.plus(lateralVec.scaled(maxX)).offset(0, maxY + 1, 0);
+
+    // ── 1. SUBWAY & RAILWAY ────────────────────────────────────────────────
     if (t.includes("subway") || t.includes("rail")) {
-      // Floor: Polished Deepslate
-      for (let dx = minX; dx <= maxX; dx++) {
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} polished_deepslate`);
-        // Central Powered Rail with Redstone Torch underneath
-        if (dx === 0) {
-          const railPos = nextFoot.offset(0, minY, 0);
-          const underPos = floorPos.offset(0, -1, 0);
-          this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} redstone_block`);
-          this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} powered_rail`);
-        }
-      }
-      // Walls: Smooth Quartz + Dark Prismarine base
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = dy === minY ? "dark_prismarine" : "smooth_quartz";
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      // Ceiling: Smooth Quartz with Sea Lanterns
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = (dx === 0 && isInterval6) ? "sea_lantern" : "smooth_quartz";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-      }
-      await this.sleep(30);
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} polished_deepslate`);
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} smooth_quartz`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} smooth_quartz`);
+      const ceilBlk = isInterval6 ? "sea_lantern" : "smooth_quartz";
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
+
+      // Central Powered Rail with Redstone Block underneath
+      const railPos = nextFoot.offset(0, minY, 0);
+      const underPos = railPos.offset(0, -1, 0);
+      this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} redstone_block`);
+      this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} powered_rail`);
+      await this.sleep(40);
       return;
     }
 
-    // ── 2. MEDIEVAL CASTLE & DUNGEON THEME ─────────────────────────────────
+    // ── 2. MEDIEVAL CASTLE CORRIDOR ────────────────────────────────────────
     if (t.includes("castle") || t.includes("dungeon")) {
-      const stoneTypes = ["stone_bricks", "mossy_stone_bricks", "cracked_stone_bricks"];
-      // Floor: Mixed Stone Bricks
-      for (let dx = minX; dx <= maxX; dx++) {
-        const randStone = stoneTypes[Math.abs((dx + distanceCovered) % stoneTypes.length)];
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${randStone}`);
+      const stone = isInterval4 ? "mossy_stone_bricks" : "stone_bricks";
+      const wall = isInterval4 ? "stripped_dark_oak_log" : "stone_bricks";
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} ${stone}`);
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} ${wall}`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${wall}`);
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${wall}`);
+
+      if (isInterval6) {
+        const lanternPos = nextFoot.offset(0, maxY, 0);
+        this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
       }
-      // Walls: Stone Bricks with Stripped Dark Oak Log arches every 4 blocks
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = isInterval4 ? "stripped_dark_oak_log" : stoneTypes[(dy + distanceCovered) % stoneTypes.length];
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      // Ceiling: Arches & Hanging Lanterns
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = isInterval4 ? "stripped_dark_oak_log" : "stone_bricks";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-        if (dx === 0 && isInterval6) {
-          const chainPos = ceilPos.offset(0, -1, 0);
-          const lanternPos = ceilPos.offset(0, -2, 0);
-          this.bot.chat(`/setblock ${chainPos.x} ${chainPos.y} ${chainPos.z} chain`);
-          this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
-        }
-      }
-      await this.sleep(30);
+      await this.sleep(40);
       return;
     }
 
     // ── 3. GLASS AQUARIUM & OCEAN DOME ─────────────────────────────────────
     if (t.includes("aquarium") || t.includes("ocean") || t.includes("glass")) {
-      // Floor: Prismarine Bricks with Sea Lantern borders
-      for (let dx = minX; dx <= maxX; dx++) {
-        const floorBlock = (dx === minX || dx === maxX) ? "sea_lantern" : "prismarine_bricks";
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${floorBlock}`);
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} prismarine_bricks`);
+      const glassType = isInterval6 ? "dark_prismarine" : "glass";
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} ${glassType}`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${glassType}`);
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${glassType}`);
+      if (isInterval6) {
+        const seaLight = nextFoot.offset(0, minY - 1, 0);
+        this.bot.chat(`/setblock ${seaLight.x} ${seaLight.y} ${seaLight.z} sea_lantern`);
       }
-      // Walls & Ceiling: Clear Glass with Dark Prismarine ribs
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = isInterval6 ? "dark_prismarine" : "glass";
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = isInterval6 ? "dark_prismarine" : "glass";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-      }
-      await this.sleep(30);
+      await this.sleep(40);
       return;
     }
 
-    // ── 4. CYBERPUNK / SCI-FI NEON CORRIDOR ────────────────────────────────
+    // ── 4. CYBERPUNK NEON CORRIDOR ─────────────────────────────────────────
     if (t.includes("cyber") || t.includes("neon") || t.includes("scifi")) {
-      // Floor: Obsidian with Cyan Stained Glass runners over Sea Lanterns
-      for (let dx = minX; dx <= maxX; dx++) {
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        if (dx === 0) {
-          const underPos = floorPos.offset(0, -1, 0);
-          this.bot.chat(`/setblock ${underPos.x} ${underPos.y} ${underPos.z} sea_lantern`);
-          this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} cyan_stained_glass`);
-        } else {
-          this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} obsidian`);
-        }
-      }
-      // Walls: Black Concrete & Polished Basalt
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = isInterval4 ? "polished_basalt" : "black_concrete";
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      // Ceiling: Smooth Quartz with Magenta Stained Glass
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = (dx === 0 && isInterval6) ? "magenta_stained_glass" : "smooth_quartz";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-      }
-      await this.sleep(30);
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} obsidian`);
+      const wall = isInterval4 ? "polished_basalt" : "black_concrete";
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} ${wall}`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${wall}`);
+      const ceilBlk = isInterval6 ? "magenta_stained_glass" : "smooth_quartz";
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
+
+      const glowFoot = nextFoot.offset(0, minY - 1, 0);
+      this.bot.chat(`/setblock ${glowFoot.x} ${glowFoot.y} ${glowFoot.z} cyan_stained_glass`);
+      await this.sleep(40);
       return;
     }
 
-    // ── 5. WESTERN MINESHAFT THEME ─────────────────────────────────────────
+    // ── 5. WESTERN MINESHAFT ───────────────────────────────────────────────
     if (t.includes("mine") || t.includes("shaft")) {
-      // Floor: Coarse Dirt, Cobblestone & Rail
-      for (let dx = minX; dx <= maxX; dx++) {
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        const floorBlock = dx % 2 === 0 ? "cobblestone" : "coarse_dirt";
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} ${floorBlock}`);
-        if (dx === 0) {
-          const railPos = nextFoot.offset(0, minY, 0);
-          this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} rail`);
-        }
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} cobblestone`);
+      const wall = isInterval4 ? "oak_log" : "oak_planks";
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} ${wall}`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${wall}`);
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${wall}`);
+
+      const railPos = nextFoot.offset(0, minY, 0);
+      this.bot.chat(`/setblock ${railPos.x} ${railPos.y} ${railPos.z} rail`);
+      if (isInterval6) {
+        const lanternPos = nextFoot.offset(0, maxY, 0);
+        this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
       }
-      // Walls: Oak Planks with Oak Log pillars every 4 blocks
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = isInterval4 ? "oak_log" : "oak_planks";
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      // Ceiling: Oak Log Arch & Lantern
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = isInterval4 ? "oak_log" : "oak_planks";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-        if (dx === 0 && isInterval6) {
-          const lanternPos = ceilPos.offset(0, -1, 0);
-          this.bot.chat(`/setblock ${lanternPos.x} ${lanternPos.y} ${lanternPos.z} lantern[hanging=true]`);
-        }
-      }
-      await this.sleep(30);
+      await this.sleep(40);
       return;
     }
 
-    // ── 6. NETHER FORTRESS VAULT THEME ─────────────────────────────────────
+    // ── 6. NETHER FORTRESS VAULT ───────────────────────────────────────────
     if (t.includes("nether") || t.includes("vault")) {
-      // Floor: Polished Blackstone Bricks
-      for (let dx = minX; dx <= maxX; dx++) {
-        const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-        this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} polished_blackstone_bricks`);
-      }
-      // Walls: Crying Obsidian & Smooth Basalt
-      for (let dy = minY; dy <= maxY; dy++) {
-        const wallBlock = isInterval4 ? "crying_obsidian" : "smooth_basalt";
-        const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-        const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-        this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} ${wallBlock}`);
-        this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} ${wallBlock}`);
-      }
-      // Ceiling: Polished Blackstone with Soul Lanterns / Shroomlights
-      for (let dx = minX; dx <= maxX; dx++) {
-        const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-        const ceilBlock = (dx === 0 && isInterval6) ? "shroomlight" : "polished_blackstone_bricks";
-        this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-      }
-      await this.sleep(30);
+      this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} polished_blackstone_bricks`);
+      const wall = isInterval4 ? "crying_obsidian" : "smooth_basalt";
+      this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} ${wall}`);
+      this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} ${wall}`);
+      const ceilBlk = isInterval6 ? "shroomlight" : "polished_blackstone_bricks";
+      this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
+      await this.sleep(40);
       return;
     }
 
     // ── DEFAULT HIGHWAY BUILDER ───────────────────────────────────────────
-    for (let dx = minX; dx <= maxX; dx++) {
-      const floorPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, minY - 1, 0);
-      this.bot.chat(`/setblock ${floorPos.x} ${floorPos.y} ${floorPos.z} stone_bricks`);
-    }
-    for (let dy = minY; dy <= maxY; dy++) {
-      const leftPos = nextFoot.plus(lateralVec.scaled(minX - 1)).offset(0, dy, 0);
-      const rightPos = nextFoot.plus(lateralVec.scaled(maxX + 1)).offset(0, dy, 0);
-      this.bot.chat(`/setblock ${leftPos.x} ${leftPos.y} ${leftPos.z} stone_bricks`);
-      this.bot.chat(`/setblock ${rightPos.x} ${rightPos.y} ${rightPos.z} stone_bricks`);
-    }
-    for (let dx = minX; dx <= maxX; dx++) {
-      const ceilPos = nextFoot.plus(lateralVec.scaled(dx)).offset(0, maxY + 1, 0);
-      const ceilBlock = (dx === 0 && isInterval6) ? "sea_lantern" : "smooth_stone";
-      this.bot.chat(`/setblock ${ceilPos.x} ${ceilPos.y} ${ceilPos.z} ${ceilBlock}`);
-    }
-    await this.sleep(30);
+    this.bot.chat(`/fill ${f1.x} ${f1.y} ${f1.z} ${f2.x} ${f2.y} ${f2.z} stone_bricks`);
+    this.bot.chat(`/fill ${lw1.x} ${lw1.y} ${lw1.z} ${lw2.x} ${lw2.y} ${lw2.z} stone_bricks`);
+    this.bot.chat(`/fill ${rw1.x} ${rw1.y} ${rw1.z} ${rw2.x} ${rw2.y} ${rw2.z} stone_bricks`);
+    const ceilBlk = isInterval6 ? "sea_lantern" : "smooth_stone";
+    this.bot.chat(`/fill ${c1.x} ${c1.y} ${c1.z} ${c2.x} ${c2.y} ${c2.z} ${ceilBlk}`);
+    await this.sleep(40);
   }
 
   /**
@@ -849,15 +762,17 @@ class MinerManager {
         }
 
         // Step forward / climb / descend
-        try {
-          await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
-          await this.bot.pathfinder.goto(new GoalNear(nextFoot.x, nextFoot.y, nextFoot.z, 0));
-        } catch (_) {
-          this.bot.setControlState("forward", true);
-          if (dyOffset === 1) this.bot.setControlState("jump", true);
-          await this.sleep(300);
-          this.bot.setControlState("forward", false);
-          this.bot.setControlState("jump", false);
+        if (dyOffset !== 0 || isStructureTheme) {
+          this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x} ${nextFoot.y} ${nextFoot.z}`);
+          await this.sleep(120);
+        } else {
+          try {
+            await this.bot.lookAt(nextFoot.offset(0.5, 0.5, 0.5));
+            await this.bot.pathfinder.goto(new GoalNear(nextFoot.x, nextFoot.y, nextFoot.z, 0));
+          } catch (_) {
+            this.bot.chat(`/tp ${this.bot.username} ${nextFoot.x} ${nextFoot.y} ${nextFoot.z}`);
+            await this.sleep(120);
+          }
         }
 
         distanceCovered++;
