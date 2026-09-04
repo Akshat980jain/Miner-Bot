@@ -123,9 +123,30 @@ app.get("/api/swarm/status", (req, res) => {
 });
 
 app.post("/api/swarm/spawn", async (req, res) => {
-  const count = parseInt(req.body.count, 10) || 3;
+  const count = parseInt(req.body.count, 10) || 10;
   if (swarm) await swarm.spawnSwarm(count);
-  res.json({ success: true, message: `Spawning ${count} bots...` });
+  res.json({ success: true, message: `Fleet target set to ${count} bots. 24/7 supervisor maintaining connection.` });
+});
+
+app.post("/api/swarm/reconnect", (req, res) => {
+  const id = parseInt(req.body.id, 10);
+  if (swarm && !isNaN(id)) {
+    swarm.enqueueReconnect(id, 0);
+    return res.json({ success: true, message: `Bot ${id} scheduled for immediate reconnect.` });
+  }
+  res.json({ success: false, message: "Invalid bot ID" });
+});
+
+app.post("/api/swarm/despawn", (req, res) => {
+  const id = parseInt(req.body.id, 10);
+  if (swarm) {
+    if (!isNaN(id)) {
+      swarm.despawnBot(id);
+    } else {
+      swarm.despawnSwarm(true);
+    }
+  }
+  res.json({ success: true, message: "Despawn executed." });
 });
 
 app.post("/api/swarm/mission", async (req, res) => {
@@ -283,6 +304,23 @@ app.get("/", (req, res) => {
       background: var(--accent); color: #000; border: none; padding: 12px 20px; border-radius: 10px;
       font-weight: 700; cursor: pointer;
     }
+
+    /* Fleet Grid Styles */
+    .fleet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
+    .bot-card { background: rgba(0,0,0,0.35); border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: all 0.2s; }
+    .bot-card.online { border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 10px rgba(16, 185, 129, 0.1); }
+    .bot-card.connecting { border-color: rgba(245, 158, 11, 0.4); }
+    .bot-card.offline { border-color: rgba(239, 68, 68, 0.2); opacity: 0.8; }
+    .bot-card-header { display: flex; justify-content: space-between; align-items: center; }
+    .bot-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .bot-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+    .bot-badge.online { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+    .bot-badge.connecting { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+    .bot-badge.offline { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .bot-meta { display: grid; grid-template-columns: 1fr 1fr; font-size: 12px; gap: 4px; color: var(--text-muted); }
+    .bot-meta b { color: #fff; font-family: 'JetBrains Mono', monospace; }
+    .btn-mini { background: rgba(56, 189, 248, 0.15); border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .btn-mini:hover { background: var(--accent); color: #000; }
   </style>
 </head>
 <body>
@@ -294,8 +332,9 @@ app.get("/", (req, res) => {
       </div>
       <div style="display: flex; align-items: center; gap: 14px;">
         <div class="nav-tabs">
-          <button class="tab-btn active" onclick="switchTab('interaction')">🚀 Mission Control</button>
-          <button class="tab-btn" onclick="switchTab('overview')">📊 Stats & Console</button>
+          <button id="btn-tab-interaction" class="tab-btn active" onclick="switchTab('interaction')">🚀 Mission Control</button>
+          <button id="btn-tab-fleet" class="tab-btn" onclick="switchTab('fleet')">🤖 10-Bot Swarm Fleet</button>
+          <button id="btn-tab-overview" class="tab-btn" onclick="switchTab('overview')">📊 Stats & Console</button>
         </div>
         <div class="status-badge">
           <div id="statusDot" class="status-dot"></div>
@@ -398,7 +437,30 @@ app.get("/", (req, res) => {
     </div>
 
     <!-- ============================================================ -->
-    <!-- TAB 2: OVERVIEW STATS & LIVE CONSOLE                          -->
+    <!-- TAB 2: 10-BOT SWARM FLEET 24/7 MANAGER                        -->
+    <!-- ============================================================ -->
+    <div id="tab-fleet" class="tab-content">
+      <div class="card">
+        <h2>🤖 10-Bot Swarm Fleet Live Status & 24/7 Supervisor</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; background: rgba(0,0,0,0.25); padding: 14px; border-radius: 12px; border: 1px solid var(--border);">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div class="status-badge"><span style="color: var(--accent); font-weight: 700;">Fleet Target:</span> <span id="fleetTarget">10 Bots</span></div>
+            <div class="status-badge"><span style="color: var(--success); font-weight: 700;">Active Online:</span> <span id="fleetActiveCount" style="font-weight: 800; color: #10b981;">0 / 10</span></div>
+            <div class="status-badge"><span style="color: #c084fc; font-weight: 700;">Supervisor:</span> <span>24/7 Self-Healing Active</span></div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="cmd-btn" style="background: var(--success); color: #000;" onclick="spawnAllSwarm()">⚡ Connect All 10 Bots</button>
+            <button class="cmd-btn" style="background: rgba(239,68,68,0.2); border: 1px solid var(--danger); color: var(--danger);" onclick="stopAllSwarm()">🛑 Stop All</button>
+          </div>
+        </div>
+        <div id="fleetCardsContainer" class="fleet-grid">
+          <!-- 10 bot cards dynamically populated -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- TAB 3: OVERVIEW STATS & LIVE CONSOLE                          -->
     <!-- ============================================================ -->
     <div id="tab-overview" class="tab-content">
       <div class="grid-2">
@@ -451,10 +513,14 @@ app.get("/", (req, res) => {
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       
       if (tab === 'interaction') {
-        document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+        document.getElementById('btn-tab-interaction').classList.add('active');
         document.getElementById('tab-interaction').classList.add('active');
+      } else if (tab === 'fleet') {
+        document.getElementById('btn-tab-fleet').classList.add('active');
+        document.getElementById('tab-fleet').classList.add('active');
+        if (typeof updateFleetStatus === 'function') updateFleetStatus();
       } else {
-        document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+        document.getElementById('btn-tab-overview').classList.add('active');
         document.getElementById('tab-overview').classList.add('active');
       }
     }
@@ -591,10 +657,79 @@ app.get("/", (req, res) => {
       }
     }
 
+    async function updateFleetStatus() {
+      try {
+        const res = await fetch('/api/swarm/status');
+        const bots = await res.json();
+        const container = document.getElementById('fleetCardsContainer');
+        if (!container || !Array.isArray(bots)) return;
+
+        const onlineCount = bots.filter(b => b.connected).length;
+        const countEl = document.getElementById('fleetActiveCount');
+        if (countEl) countEl.innerText = onlineCount + ' / 10';
+
+        container.innerHTML = bots.map(function(b) {
+          var statusClass = b.connected ? 'online' : (b.connecting ? 'connecting' : 'offline');
+          var statusLabel = b.connected ? 'ONLINE' : (b.connecting ? 'CONNECTING' : 'OFFLINE');
+          var roleLabel = b.id === 1 ? '👑 Primary Leader' : ('⚙️ Worker #' + b.id);
+          var coordsStr = b.pos ? ('(' + b.pos.x + ', ' + b.pos.y + ', ' + b.pos.z + ')') : 'Unknown';
+          var minedCount = (b.stats && b.stats.totalBlocksMined) ? b.stats.totalBlocksMined : 0;
+          var reconnectBtn = (b.id > 1 && !b.connected)
+            ? '<button class="btn-mini" onclick="reconnectBot(' + b.id + ')">⚡ Reconnect</button>'
+            : '';
+
+          return '<div class="bot-card ' + statusClass + '">' +
+            '<div class="bot-card-header">' +
+              '<div class="bot-title">' +
+                '<span>' + b.username + '</span>' +
+                '<span style="font-size:11px; color: var(--accent); font-weight: 600;">' + roleLabel + '</span>' +
+              '</div>' +
+              '<span class="bot-badge ' + statusClass + '">' + statusLabel + '</span>' +
+            '</div>' +
+            '<div class="bot-meta">' +
+              '<div>State: <b>' + b.state + '</b></div>' +
+              '<div>Mined: <b>' + minedCount + '</b></div>' +
+              '<div>Health: <b style="color:#ef4444;">' + b.health + '/20</b></div>' +
+              '<div>Food: <b style="color:#f59e0b;">' + b.food + '/20</b></div>' +
+              '<div style="grid-column: span 2;">Pos: <b>' + coordsStr + '</b></div>' +
+            '</div>' +
+            '<div style="display:flex; justify-content: flex-end; margin-top:4px;">' +
+              reconnectBtn +
+            '</div>' +
+          '</div>';
+        }).join('');
+      } catch (_) {}
+    }
+
+    async function reconnectBot(id) {
+      await fetch('/api/swarm/reconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      setTimeout(updateFleetStatus, 800);
+    }
+
+    async function spawnAllSwarm() {
+      await fetch('/api/swarm/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 10 })
+      });
+      setTimeout(updateFleetStatus, 800);
+    }
+
+    async function stopAllSwarm() {
+      await fetch('/api/swarm/stop', { method: 'POST' });
+      setTimeout(updateFleetStatus, 800);
+    }
+
     setInterval(updateDashboard, 1500);
     setInterval(updateLogs, 2000);
+    setInterval(updateFleetStatus, 2500);
     updateDashboard();
     updateLogs();
+    updateFleetStatus();
   </script>
 </body>
 </html>
@@ -655,15 +790,12 @@ function createMinerBot() {
 
   bot.once("spawn", () => {
     botState.connected = true;
+    
+    // Register primary bot and start 24/7 fleet supervisor watchdog
     if (!swarm) {
       swarm = new SwarmManager(config.server, addLog, () => {});
     }
-    swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
-
-    // Auto-login all 10 bots into the server 24/7 permanently
-    setTimeout(() => {
-      if (swarm) swarm.startAllBots();
-    }, 2500);
+    swarm.registerPrimaryBot(bot, miner, safety);
 
     const mcData = require("minecraft-data")(bot.version);
     const defaultMove = new Movements(bot, mcData);
@@ -683,26 +815,22 @@ function createMinerBot() {
       };
     }
 
-    // Auto-auth & Creative Mode (Spaced to prevent chat flood kicks)
+    // Auto-auth & Creative Mode (Dual-action /register and /login to prevent kicks)
     if (config.utils && config.utils["auto-auth"] && config.utils["auto-auth"].enabled) {
       const pass = config.utils["auto-auth"].password;
       setTimeout(() => {
-        bot.chat(`/login ${pass}`);
-      }, 1500);
+        try { bot.chat(`/register ${pass} ${pass}`); } catch (_) {}
+      }, 1200);
+      setTimeout(() => {
+        try { bot.chat(`/login ${pass}`); } catch (_) {}
+      }, 2600);
     }
 
     if (config.server?.tryCreative !== false) {
       setTimeout(() => {
-        bot.chat("/gamemode creative");
+        try { bot.chat("/gamemode creative"); } catch (_) {}
         addLog("[Gamemode] Switched to Creative Mode.", "General");
-      }, 3500);
-
-      // Pre-spawn and maintain full fleet of Bots (1 to 10) with 6s gentle spacing
-      if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-      swarm.registerPrimaryBot(bot, miner, safety);
-      setTimeout(() => {
-        addLog("[Fleet] Initializing swarm fleet manager...", "Swarm");
-      }, 6000);
+      }, 4000);
 
       bot.on("game", () => {
         if (bot.game && bot.game.gameMode !== "creative") {
@@ -1030,12 +1158,25 @@ async function handleChatCommands(sender, message) {
       break;
     }
 
-    case "!spawn": {
-      const count = parseInt(parts[1], 10) || 3;
-      bot.chat(`🤖 Spawning Swarm Fleet of ${count} Miner Bots...`);
+    case "!spawn":
+    case "!spawnall":
+    case "!swarmstart": {
+      const count = parseInt(parts[1], 10) || 10;
+      bot.chat(`🤖 Spawning and maintaining 24/7 fleet of ${count} Miner Bots...`);
       if (!swarm) swarm = new SwarmManager(config.server, addLog, () => {});
-      swarm.bots.set(1, { id: 1, username: "Miner_Bot", bot, miner, safety, connected: true });
+      swarm.registerPrimaryBot(bot, miner, safety);
       swarm.spawnSwarm(count);
+      break;
+    }
+
+    case "!reconnect": {
+      const id = parseInt(parts[1], 10);
+      if (!isNaN(id) && id >= 2 && id <= 10) {
+        bot.chat(`🤖 Scheduling immediate reconnect for Bot ${id}...`);
+        if (swarm) swarm.enqueueReconnect(id, 0);
+      } else {
+        bot.chat("Usage: !reconnect <id: 2..10>");
+      }
       break;
     }
 

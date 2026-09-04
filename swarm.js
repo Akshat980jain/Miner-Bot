@@ -13,56 +13,148 @@ class SwarmManager {
     this.serverConfig = serverConfig || config.server;
     this.addLog = addLogCallback || console.log;
     this.broadcastState = broadcastStateCallback || (() => {});
-    this.bots = new Map(); // id (1..10) -> { bot, miner, safety, id, username, connected }
+    this.bots = new Map(); // id (1..10) -> { bot, miner, safety, id, username, connected, connecting, reconnectAttempts }
     this.heartbeatTimers = new Map();
     this.reconnectQueue = [];
     this.isProcessingQueue = false;
     this.maxBots = 10;
-    this.autoStartTriggered = false;
+    this.targetBots = (config.swarm && config.swarm.targetCount) ? config.swarm.targetCount : 10;
+    this.supervisorInterval = null;
+    this.isSupervisorRunning = false;
+    this.staggerDelay = (config.swarm && config.swarm.staggerJoinDelay) ? config.swarm.staggerJoinDelay : 6000;
+    this.authPassword = (config.swarm && config.swarm.autoAuthPassword) || (config.utils && config.utils["auto-auth"] && config.utils["auto-auth"].password) || "chalol78";
   }
 
   registerPrimaryBot(bot, miner, safety) {
     this.bots.set(1, {
       id: 1,
-      username: "Miner_Bot",
+      username: (config.bot && config.bot.username) || "Miner_Bot",
       bot,
       miner,
       safety,
-      connected: true
+      connected: true,
+      connecting: false,
+      reconnectAttempts: 0
     });
+
+    // Start 24/7 fleet supervisor watchdog
+    this.startSupervisor();
   }
 
   getBotName(id) {
-    if (id === 1) return "Miner_Bot";
+    if (id === 1) return (config.bot && config.bot.username) || "Miner_Bot";
     return `Miner_Bot_${id}`;
   }
 
   /**
-   * Starts and maintains all 10 bots logged in 24/7 with throttle-safe sequential joins
+   * Continuous 24/7 Fleet Supervisor Watchdog.
+   * Periodically checks all bots 1..targetBots and recovers any dropped bots.
    */
-  async startAllBots() {
-    if (this.autoStartTriggered) return;
-    this.autoStartTriggered = true;
-    this.addLog("[Swarm] 🌟 Connecting 10-bot swarm fleet sequentially with anti-spam throttle protection...", "Swarm");
+  startSupervisor() {
+    if (this.isSupervisorRunning) return;
+    this.isSupervisorRunning = true;
 
-    for (let id = 2; id <= this.maxBots; id++) {
-      try {
-        await this.spawnBotAndWait(id);
-      } catch (err) {
-        this.addLog(`[Swarm] Bot ${id} join delayed: ${err.message}. Queued for auto-reconnect.`, "Swarm");
-        this.enqueueReconnect(id);
+    this.addLog("[Swarm Supervisor] 🛡️ 24/7 Fleet Watchdog started. Target fleet size: " + this.targetBots + " bots.", "Swarm");
+
+    // Immediately trigger fleet spawn
+    this.ensureAllBotsAlive();
+
+    // Check fleet state every 12 seconds
+    this.supervisorInterval = setInterval(() => {
+      this.ensureAllBotsAlive();
+    }, 12000);
+  }
+
+  stopSupervisor() {
+    if (this.supervisorInterval) {
+      clearInterval(this.supervisorInterval);
+      this.supervisorInterval = null;
+    }
+    this.isSupervisorRunning = false;
+  }
+
+  /**
+   * Reconciles fleet desired state: queues any offline bots for connection
+   */
+  ensureAllBotsAlive() {
+    if (config.swarm && config.swarm.enabled === false) return;
+
+    for (let id = 2; id <= this.targetBots; id++) {
+      const entry = this.bots.get(id);
+      const isConnected = entry && entry.connected && entry.bot && entry.bot.entity;
+      const isConnecting = entry && entry.connecting;
+      const isInQueue = this.reconnectQueue.includes(id);
+
+      if (!isConnected && !isConnecting && !isInQueue) {
+        this.enqueueReconnect(id, 1000);
       }
-      await this.sleep(5000); // 5s safe delay to completely prevent server connection throttling
     }
   }
 
   /**
-   * Spawn a bot and await its spawn handshake before proceeding
+   * Spawns or scales the fleet up to the requested count (1..10)
+   */
+  async spawnSwarm(count = 10) {
+    this.targetBots = Math.min(Math.max(parseInt(count, 10) || 10, 1), this.maxBots);
+    this.addLog(`[Swarm] Adjusting fleet target to ${this.targetBots} bots...`, "Swarm");
+    this.startSupervisor();
+    this.ensureAllBotsAlive();
+  }
+
+  /**
+   * Despawns a single swarm bot
+   */
+  despawnBot(id) {
+    if (id <= 1 || id > this.maxBots) return;
+
+    // Remove from reconnect queue
+    const qIndex = this.reconnectQueue.indexOf(id);
+    if (qIndex !== -1) {
+      this.reconnectQueue.splice(qIndex, 1);
+    }
+
+    this.cleanUpBot(id);
+
+    if (this.bots.has(id)) {
+      const entry = this.bots.get(id);
+      if (entry.bot) {
+        try { entry.bot.quit("Despawned by command"); } catch (_) {}
+      }
+      this.bots.delete(id);
+    }
+
+    this.addLog(`[Swarm] Bot ${id} despawned cleanly.`, "Swarm");
+    this.broadcastState();
+  }
+
+  /**
+   * Despawns all extra swarm bots (keeps primary Bot 1 alive)
+   */
+  despawnSwarm(keepPrimary = true) {
+    this.reconnectQueue = [];
+    const startId = keepPrimary ? 2 : 1;
+    for (let id = startId; id <= this.maxBots; id++) {
+      this.despawnBot(id);
+    }
+    this.targetBots = keepPrimary ? 1 : 0;
+    this.addLog(`[Swarm] All swarm worker bots despawned. Primary bot preserved.`, "Swarm");
+  }
+
+  /**
+   * Connect all 10 bots sequentially
+   */
+  async startAllBots() {
+    this.spawnSwarm(this.maxBots);
+  }
+
+  /**
+   * Spawns a bot and awaits spawn handshake with timeout and error handling
    */
   spawnBotAndWait(id) {
     return new Promise((resolve, reject) => {
-      if (this.bots.has(id) && this.bots.get(id).connected) {
-        return resolve(this.bots.get(id));
+      let entry = this.bots.get(id);
+      if (entry && entry.connected && entry.bot && entry.bot.entity) {
+        return resolve(entry);
       }
 
       const username = this.getBotName(id);
@@ -70,7 +162,24 @@ class SwarmManager {
       const port = parseInt(this.serverConfig.port || config.server.port, 10);
       const version = this.serverConfig.version || config.server.version || "1.21.4";
 
-      this.addLog(`[Swarm] Connecting ${username} (${id}/10) to ${host}:${port}...`, "Swarm");
+      if (!entry) {
+        entry = {
+          id,
+          username,
+          bot: null,
+          miner: null,
+          safety: null,
+          connected: false,
+          connecting: true,
+          reconnectAttempts: 0
+        };
+        this.bots.set(id, entry);
+      } else {
+        entry.connecting = true;
+        entry.connected = false;
+      }
+
+      this.addLog(`[Swarm] 🔌 Connecting ${username} (${id}/10) to ${host}:${port}...`, "Swarm");
 
       let resolved = false;
 
@@ -81,9 +190,11 @@ class SwarmManager {
           username: username,
           version: version,
           auth: "offline",
-          checkTimeoutInterval: 0,
-          hideErrors: true
+          checkTimeoutInterval: 120000,
+          hideErrors: false
         });
+
+        entry.bot = bot;
 
         if (bot._client) {
           bot._client.on("error", (err) => {
@@ -99,22 +210,32 @@ class SwarmManager {
         const safety = new Safety(bot, config);
         const miner = new Miner(bot, config, safety);
 
-        const botEntry = {
-          id,
-          username,
-          bot,
-          miner,
-          safety,
-          connected: false
+        entry.miner = miner;
+        entry.safety = safety;
+
+        // Smart Dual-Auth Chat Listener (handles /register and /login prompts)
+        const handleAuthMessage = (msg) => {
+          const text = (typeof msg === "string" ? msg : msg.toString()).toLowerCase();
+          if (text.includes("/register") || text.includes("register with") || text.includes("register password")) {
+            setTimeout(() => {
+              try { bot.chat(`/register ${this.authPassword} ${this.authPassword}`); } catch (_) {}
+            }, 800);
+          } else if (text.includes("/login") || text.includes("please login") || text.includes("use /login")) {
+            setTimeout(() => {
+              try { bot.chat(`/login ${this.authPassword}`); } catch (_) {}
+            }, 800);
+          }
         };
 
-        this.bots.set(id, botEntry);
+        bot.on("message", handleAuthMessage);
 
         bot.once("spawn", () => {
-          botEntry.connected = true;
-          this.addLog(`[Swarm] ✅ ${username} spawned successfully!`, "Swarm");
+          entry.connected = true;
+          entry.connecting = false;
+          entry.reconnectAttempts = 0;
+          this.addLog(`[Swarm] ✅ ${username} spawned successfully into world!`, "Swarm");
 
-          // Initialize pathfinder movements
+          // Pathfinder movements initialization
           try {
             const mcData = require("minecraft-data")(bot.version);
             const defaultMove = new Movements(bot, mcData);
@@ -126,47 +247,87 @@ class SwarmManager {
 
           safety.init();
 
-          // Auto-auth (login only - avoid command spam kicks)
-          const pass = "chalol78";
+          // Dual-Action Auto-Auth sequence:
+          // 1. Send /register in case bot is new
+          // 2. Send /login in case bot is already registered
           setTimeout(() => {
-            bot.chat(`/login ${pass}`);
-          }, 1500);
+            try {
+              bot.chat(`/register ${this.authPassword} ${this.authPassword}`);
+            } catch (_) {}
+          }, 1200);
 
           setTimeout(() => {
-            bot.chat("/gamemode creative");
-          }, 3500);
+            try {
+              bot.chat(`/login ${this.authPassword}`);
+            } catch (_) {}
+          }, 2600);
 
-          // Anti-AFK heartbeat (swing arm every 25s so server never kicks for AFK)
+          // Creative mode if server allows
+          if (config.server?.tryCreative !== false) {
+            setTimeout(() => {
+              try { bot.chat("/gamemode creative"); } catch (_) {}
+            }, 4500);
+          }
+
+          // 24/7 Anti-AFK Routine (Arm swing + Micro-rotation + Periodic sneak)
           if (this.heartbeatTimers.has(id)) clearInterval(this.heartbeatTimers.get(id));
+          let afkTick = 0;
           const hb = setInterval(() => {
-            if (bot && botEntry.connected) {
-              try { bot.swingArm(); } catch (_) {}
+            if (bot && entry.connected && bot.entity) {
+              try {
+                afkTick++;
+                bot.swingArm();
+                // Micro-rotation prevents idle camera kicks
+                const currentYaw = bot.entity.yaw;
+                const currentPitch = bot.entity.pitch;
+                const offset = (afkTick % 2 === 0 ? 0.05 : -0.05);
+                bot.look(currentYaw + offset, currentPitch, true).catch(() => {});
+
+                // Sneak pulse every 60s
+                if (afkTick % 3 === 0) {
+                  bot.setControlState("sneak", true);
+                  setTimeout(() => {
+                    try { bot.setControlState("sneak", false); } catch (_) {}
+                  }, 1000);
+                }
+              } catch (_) {}
             }
-          }, 25000);
+          }, 20000);
           this.heartbeatTimers.set(id, hb);
 
           this.broadcastState();
 
           if (!resolved) {
             resolved = true;
-            resolve(botEntry);
+            resolve(entry);
           }
         });
 
         bot.on("kicked", (reason) => {
-          this.addLog(`[Swarm] ${username} was kicked: ${reason}`, "Swarm");
-          botEntry.connected = false;
+          const reasonStr = typeof reason === "object" ? JSON.stringify(reason) : String(reason);
+          this.addLog(`[Swarm] ⚠️ ${username} was kicked: ${reasonStr}`, "Swarm");
+          entry.connected = false;
+          entry.connecting = false;
           this.cleanUpBot(id);
+
+          // Auto-reconnect on kick
+          this.enqueueReconnect(id, 8000);
+
           if (!resolved) {
             resolved = true;
-            reject(new Error(`Kicked: ${reason}`));
+            reject(new Error(`Kicked: ${reasonStr}`));
           }
         });
 
         bot.on("end", () => {
-          this.addLog(`[Swarm] ${username} disconnected.`, "Swarm");
-          botEntry.connected = false;
+          this.addLog(`[Swarm] 🔌 ${username} connection ended. Scheduling auto-reconnect...`, "Swarm");
+          entry.connected = false;
+          entry.connecting = false;
           this.cleanUpBot(id);
+
+          // Auto-reconnect on disconnect
+          this.enqueueReconnect(id, 5000);
+
           if (!resolved) {
             resolved = true;
             reject(new Error("Connection ended"));
@@ -177,17 +338,22 @@ class SwarmManager {
           this.addLog(`[Swarm] ${username} handled notice: ${err.message}`, "Swarm");
         });
 
-        // Fail-safe timeout for single join attempt
+        // Fail-safe timeout for join attempt
         setTimeout(() => {
           if (!resolved) {
             resolved = true;
-            reject(new Error("Connection timeout"));
+            entry.connecting = false;
+            this.cleanUpBot(id);
+            this.enqueueReconnect(id, 6000);
+            reject(new Error("Connection handshake timed out (25s)"));
           }
-        }, 15000);
+        }, 25000);
 
       } catch (e) {
+        entry.connecting = false;
         if (!resolved) {
           resolved = true;
+          this.enqueueReconnect(id, 6000);
           reject(e);
         }
       }
@@ -195,7 +361,7 @@ class SwarmManager {
   }
 
   /**
-   * Cleans up listeners and heartbeats
+   * Cleans up listeners and heartbeats for a bot
    */
   cleanUpBot(id) {
     if (this.heartbeatTimers.has(id)) {
@@ -204,6 +370,7 @@ class SwarmManager {
     }
     if (this.bots.has(id)) {
       const entry = this.bots.get(id);
+      entry.connected = false;
       if (entry.bot) {
         try { entry.bot.removeAllListeners(); } catch (_) {}
       }
@@ -212,28 +379,56 @@ class SwarmManager {
   }
 
   /**
-   * Enqueue a bot into the sequential reconnect queue to avoid throttling
+   * Enqueue a bot into the sequential reconnect queue
    */
-  enqueueReconnect(id) {
-    if (id <= 1 || id > this.maxBots) return;
-    if (!this.reconnectQueue.includes(id)) {
+  enqueueReconnect(id, delay = 0) {
+    if (id <= 1 || id > this.targetBots) return;
+    if (this.reconnectQueue.includes(id)) return;
+
+    const entry = this.bots.get(id);
+    if (entry && entry.connected) return;
+
+    if (delay > 0) {
+      setTimeout(() => {
+        if (!this.reconnectQueue.includes(id)) {
+          this.reconnectQueue.push(id);
+          this.processReconnectQueue();
+        }
+      }, delay);
+    } else {
       this.reconnectQueue.push(id);
+      this.processReconnectQueue();
     }
-    this.processReconnectQueue();
   }
 
+  /**
+   * Processes the reconnect queue sequentially with safe anti-throttle delay
+   */
   async processReconnectQueue() {
     if (this.isProcessingQueue || this.reconnectQueue.length === 0) return;
     this.isProcessingQueue = true;
 
     while (this.reconnectQueue.length > 0) {
       const nextId = this.reconnectQueue.shift();
-      await this.sleep(5000); // 5s cooldown between reconnect attempts to avoid throttling
+      const entry = this.bots.get(nextId);
+
+      // Check if already connected
+      if (entry && entry.connected && entry.bot && entry.bot.entity) {
+        continue;
+      }
+
+      // Safe delay between joins to satisfy server connection-throttle
+      await this.sleep(this.staggerDelay);
+
       try {
         await this.spawnBotAndWait(nextId);
       } catch (err) {
-        this.addLog(`[Swarm] Reconnect for Bot ${nextId} delayed. Will retry in queue...`, "Swarm");
-        this.reconnectQueue.push(nextId);
+        const attempts = (entry ? entry.reconnectAttempts : 0) + 1;
+        if (entry) entry.reconnectAttempts = attempts;
+
+        const backoff = Math.min(this.staggerDelay * Math.min(attempts, 4), 30000);
+        this.addLog(`[Swarm] Reconnect for Bot ${nextId} failed (${err.message}). Retrying in ${(backoff / 1000).toFixed(0)}s (Attempt #${attempts})...`, "Swarm");
+        this.enqueueReconnect(nextId, backoff);
       }
     }
 
@@ -241,7 +436,7 @@ class SwarmManager {
   }
 
   /**
-   * Execute an individual command on ANY bot (1..10 or Miner_Bot / Miner_Bot_10) with Auto-Spawn on Demand
+   * Execute an individual command on ANY bot (1..10)
    */
   async executeBotCommand(targetIdentifier, sender, commandLine) {
     let targetEntry = null;
@@ -265,10 +460,11 @@ class SwarmManager {
       }
     }
 
-    // Auto-Spawn on demand if bot is offline or not yet created
+    // Auto-Spawn on demand if bot is offline
     if ((!targetEntry || !targetEntry.connected) && targetId && targetId >= 2) {
-      if (this.bots.has(1) && this.bots.get(1).bot) {
-        this.bots.get(1).bot.chat(`🤖 Auto-spawning Miner_Bot_${targetId} on demand to execute mission...`);
+      const pBot = this.bots.get(1);
+      if (pBot && pBot.bot) {
+        pBot.bot.chat(`🤖 Spawning Miner_Bot_${targetId} to execute mission...`);
       }
       try {
         await this.spawnBotAndWait(targetId);
@@ -279,8 +475,9 @@ class SwarmManager {
     }
 
     if (!targetEntry || !targetEntry.connected) {
-      if (this.bots.has(1) && this.bots.get(1).bot) {
-        this.bots.get(1).bot.chat(`⚠️ Bot '${targetIdentifier}' is not ready yet. Please retry in 5s.`);
+      const pBot = this.bots.get(1);
+      if (pBot && pBot.bot) {
+        pBot.bot.chat(`⚠️ Bot '${targetIdentifier}' is not connected yet. Please retry in a few seconds.`);
       }
       return false;
     }
@@ -371,8 +568,9 @@ class SwarmManager {
       }
     }
 
-    if (this.primaryBot && this.primaryBot.chat) {
-      this.primaryBot.chat(`🛑 [Fleet Manager] Stopped all ${stoppedCount} fleet bots.`);
+    const pBot = this.bots.get(1);
+    if (pBot && pBot.bot && typeof pBot.bot.chat === "function") {
+      pBot.bot.chat(`🛑 [Fleet Manager] Stopped all ${stoppedCount} fleet bots.`);
     }
     this.addLog(`[Swarm] Universal Stop triggered by ${sender}. ${stoppedCount} bots stopped.`, "Swarm");
   }
@@ -429,7 +627,7 @@ class SwarmManager {
       };
 
       entry.bot.chat(`🚀 [Lane ${idx + 1}] Starting ${size} mission at (${botMineCoords.x}, ${botMineCoords.y}, ${botMineCoords.z})`);
-      
+
       entry.miner.startAutonomousMission({
         mineCoords: botMineCoords,
         chestCoords: botChestCoords,
@@ -469,17 +667,23 @@ class SwarmManager {
   }
 
   getSwarmStatus() {
-    return Array.from(this.bots.values()).map((entry) => {
-      const pos = entry.bot && entry.bot.entity ? entry.bot.entity.position.floored() : null;
-      return {
-        id: entry.id,
-        username: entry.username,
-        connected: entry.connected,
-        state: entry.miner ? entry.miner.state : "DISCONNECTED",
+    const list = [];
+    for (let id = 1; id <= this.maxBots; id++) {
+      const entry = this.bots.get(id);
+      const pos = entry && entry.bot && entry.bot.entity ? entry.bot.entity.position.floored() : null;
+      list.push({
+        id,
+        username: entry ? entry.username : this.getBotName(id),
+        connected: entry ? entry.connected : false,
+        connecting: entry ? entry.connecting : false,
+        state: entry && entry.miner ? entry.miner.state : (entry && entry.connected ? "IDLE" : "OFFLINE"),
         pos: pos ? { x: pos.x, y: pos.y, z: pos.z } : null,
-        stats: entry.miner ? entry.miner.stats : {}
-      };
-    });
+        health: entry && entry.bot ? entry.bot.health : 0,
+        food: entry && entry.bot ? entry.bot.food : 0,
+        stats: entry && entry.miner ? entry.miner.stats : {}
+      });
+    }
+    return list;
   }
 
   sleep(ms) {

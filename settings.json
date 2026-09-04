@@ -85,6 +85,14 @@
     "retreatOnLowHealth": true,
     "minHealth": 6
   },
+  "swarm": {
+    "enabled": true,
+    "targetCount": 10,
+    "autoSpawnAll": true,
+    "staggerJoinDelay": 6000,
+    "autoAuthPassword": "chalol78",
+    "antiAfk": true
+  },
   "discord": {
     "enabled": false,
     "webhookUrl": ""
